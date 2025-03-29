@@ -1,0 +1,11 @@
+module = "icon"
+
+[glyphs]
+edit = "fontawesome-pencil"
+save = "entypo-floppy"
+trash = "typicons-trash"
+file_explorer = "fontawesome-folder-open"
+open = "fontawesome-doc-text-inv"
+text_cursor = "fontawesome-i-cursor"
+palette = "entypo-palette"
+settings = "fontawesome-cog-alt"
