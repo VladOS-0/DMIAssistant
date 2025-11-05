@@ -52,7 +52,7 @@ jobs:
 
           cp target/${{ matrix.target }}/release/$EXECUTABLE_NAME release-assets/
 
-          cp README.md LICENSE release-assets/
+          cp README.md LICENSE LICENSE-GPL release-assets/
 
           if [ "${{ matrix.target }}" = "x86_64-pc-windows-gnu" ]; then
             ARCHIVE_NAME="DMIAssistant-windows-x86_64.zip"
