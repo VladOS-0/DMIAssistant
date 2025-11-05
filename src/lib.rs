@@ -12,6 +12,7 @@ pub mod screens;
 pub mod utils;
 pub mod widgets;
 
+use crate::screens::extractor::{ExtractorMessage, ExtractorScreen};
 use crate::screens::Screen;
 use screens::debugger::{DebuggerMessage, DebuggerScreen};
 use screens::loader::{LoaderMessage, LoaderScreen};
@@ -29,6 +30,7 @@ pub enum Message {
     LoaderMessage(LoaderMessage),
     DebuggerMessage(DebuggerMessage),
     ParserMessage(ParserMessage),
+    ExtractorMessage(ExtractorMessage),
     ChangeScreen(Screens),
 }
 
@@ -39,6 +41,7 @@ pub struct DMIAssistant {
     pub debugger_screen: DebuggerScreen,
     pub loader_screen: LoaderScreen,
     pub parser_screen: ParserScreen,
+    pub extractor_screen: ExtractorScreen,
 
     pub theme: Theme,
 }
@@ -55,6 +58,9 @@ impl DMIAssistant {
                     Screens::Parser => ParserScreen::update(self, message),
                     Screens::Loader => LoaderScreen::update(self, message),
                     Screens::Debugger => DebuggerScreen::update(self, message),
+                    Screens::Extractor => {
+                        ExtractorScreen::update(self, message)
+                    }
                 },
             }
         } else {
@@ -72,6 +78,10 @@ impl DMIAssistant {
                 Message::DebuggerMessage(msg) => {
                     DebuggerScreen::update(self, Message::DebuggerMessage(msg))
                 }
+                Message::ExtractorMessage(msg) => ExtractorScreen::update(
+                    self,
+                    Message::ExtractorMessage(msg),
+                ),
 
                 _ => Task::none(),
             }
@@ -96,6 +106,11 @@ impl DMIAssistant {
                     Screens::Debugger,
                     self.debugger_screen.label(),
                     DebuggerScreen::view(self),
+                )
+                .push(
+                    Screens::Extractor,
+                    self.extractor_screen.label(),
+                    ExtractorScreen::view(self),
                 )
                 .set_active_tab(&self.current_screen)
                 .tab_label_spacing(20)

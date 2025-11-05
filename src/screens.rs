@@ -4,6 +4,7 @@ use iced_aw::TabLabel;
 use crate::{DMIAssistant, Message};
 
 pub mod debugger;
+pub mod extractor;
 pub mod loader;
 pub mod parser;
 
@@ -29,10 +30,11 @@ macro_rules! wrap {
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub enum Screens {
-    #[default]
     Parser,
     Loader,
     Debugger,
+    #[default]
+    Extractor,
 }
 
 pub trait Screen {

@@ -56,6 +56,7 @@ pub fn animate(
     animated_encoder
         .set_repeat(match loop_flag {
             Looping::Indefinitely => Repeat::Infinite,
+            // interesting fact - iced_gif does not support finite looping. Oopsie.
             Looping::NTimes(num) => Repeat::Finite(num.get() as u16),
         })
         .unwrap_or_else(|err| eprintln!("Error setting repeat: {err}"));
@@ -71,7 +72,7 @@ pub fn animate(
                         .unwrap_or_default()
                         .get(i)
                         .unwrap_or(&1.0)
-                        .mul(100.0) // Delay in BYOND is measured in ticks (0.1s). In gif crate it's measured
+                        .mul(100.0) // Delay in BYOND is measured in ticks (0.1s). In iced_gif it's measured
                         .round() as u32, //                                                         in ms (0.001s).
                     1,
                 ),
