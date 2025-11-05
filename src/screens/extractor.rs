@@ -22,6 +22,7 @@ pub enum ExtractorMessage {
     DMILoaded((PathBuf, Result<Vec<String>, String>)),
     CopyDMI(PathBuf),
     CopyText(String),
+    RemoveDMI(PathBuf),
     ClearAll,
 }
 
@@ -89,6 +90,10 @@ impl Screen for ExtractorScreen {
                 }
                 ExtractorMessage::CopyText(text) => {
                     let _ = Clipboard::new().unwrap().set_text(text);
+                    Task::none()
+                }
+                ExtractorMessage::RemoveDMI(path) => {
+                    screen.parsed_dmis.remove(&path);
                     Task::none()
                 }
                 ExtractorMessage::ClearAll => {
@@ -182,8 +187,8 @@ impl Screen for ExtractorScreen {
             let mut dmi_states_column: Column<Message> = Column::new();
             for state in dmi {
                 dmi_states_column = dmi_states_column.push(row![
-                    text!("{}", state),
-                    button(row![icon::save(), text(" Copy")])
+                    text!("{}  ", state),
+                    button(icon::save())
                         .on_press(wrap![ExtractorMessage::CopyText(
                             state.clone()
                         )])
@@ -193,17 +198,23 @@ impl Screen for ExtractorScreen {
             parsed_dmis_column = parsed_dmis_column.push(container(column![
                 row![
                     bold_text(path.to_string_lossy()),
+                    button(row![icon::save(), text(" Copy All")]).on_press(
+                        wrap![ExtractorMessage::CopyDMI(path.clone())]
+                    ),
                     button(row![icon::save(), text(" Copy Path")])
                         .on_press(wrap![ExtractorMessage::CopyText(
                             path.to_string_lossy().to_string()
                         )])
-                        .style(button::secondary)
-                ],
+                        .style(button::secondary),
+                    button(row![icon::trash(), text(" Clear")])
+                        .on_press(wrap![ExtractorMessage::RemoveDMI(
+                            path.clone()
+                        )])
+                        .style(button::secondary),
+                ]
+                .spacing(4),
                 dmi_states_column,
-                button(row![icon::save(), text(" Copy All")])
-                    .on_press(wrap![ExtractorMessage::CopyDMI(path.clone())])
-                    .style(button::secondary),
-                Space::with_height(20)
+                Space::with_height(40)
             ]));
         }
         container(scrollable(column![
