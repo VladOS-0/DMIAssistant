@@ -52,23 +52,7 @@ jobs:
 
           cp target/${{ matrix.target }}/release/$EXECUTABLE_NAME release-assets/
 
-          if [ -f ".env.example" ]; then
-            cp .env.example release-assets/.env
-            echo "Created .env from .env.example"
-          else
-            echo ".env.example not found!" >&2
-            exit 1
-          fi
-
-          if [ -f "Config.example.toml" ]; then
-            cp Config.example.toml release-assets/Config.toml
-          else
-            echo "Config.example.toml not found!" >&2
-            exit 1
-          fi
-
-
-          cp README.md LICENSE-APACHE LICENSE-MIT release-assets/
+          cp README.md LICENSE release-assets/
 
           if [ "${{ matrix.target }}" = "x86_64-pc-windows-gnu" ]; then
             ARCHIVE_NAME="DMIAssistant-windows-x86_64.zip"
