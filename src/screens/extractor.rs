@@ -1,5 +1,6 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
+    ffi::OsStr,
     path::PathBuf,
     time::Instant,
 };
@@ -50,40 +51,46 @@ impl Screen for ExtractorScreen {
         let screen = &mut app.extractor_screen;
         if let Message::ExtractorMessage(screen_message) = message {
             match screen_message {
-                ExtractorMessage::LoadDMI(path) => Task::future(async move {
-                    let load_start = Instant::now();
-                    let opened_dmi = load_dmi(path.clone());
-                    if opened_dmi.is_err() {
-                        return wrap![ExtractorMessage::DMILoaded((
+                ExtractorMessage::LoadDMI(path) => {
+                    screen.loading_dmis.insert(path.clone());
+                    Task::future(async move {
+                        let load_start = Instant::now();
+                        let opened_dmi = load_dmi(path.clone());
+                        if opened_dmi.is_err() {
+                            return wrap![ExtractorMessage::DMILoaded((
+                                path,
+                                Err(format!("{}", opened_dmi.unwrap_err()),)
+                            ))];
+                        }
+                        let opened_dmi = opened_dmi.unwrap();
+
+                        let existing_states: Vec<String> = opened_dmi
+                            .states
+                            .iter()
+                            .map(|state| state.name.clone())
+                            .collect();
+
+                        println!(
+                            "DMI parsed in {}ms",
+                            load_start.elapsed().as_millis()
+                        );
+                        wrap![ExtractorMessage::DMILoaded((
                             path,
-                            Err(format!("{}", opened_dmi.unwrap_err()),)
-                        ))];
-                    }
-                    let opened_dmi = opened_dmi.unwrap();
-
-                    let existing_states: Vec<String> = opened_dmi
-                        .states
-                        .iter()
-                        .map(|state| state.name.clone())
-                        .collect();
-
-                    println!(
-                        "DMI parsed in {}ms",
-                        load_start.elapsed().as_millis()
-                    );
-                    wrap![ExtractorMessage::DMILoaded((
-                        path,
-                        Ok(existing_states)
-                    ))]
-                }),
+                            Ok(existing_states)
+                        ))]
+                    })
+                }
                 ExtractorMessage::DMILoaded((path, loaded)) => {
                     if let Err(err) = loaded {
                         eprintln!("{err}");
                         screen.loading_dmis.remove(&path);
                         return Task::none();
                     }
-                    screen.parsed_dmis.insert(path.clone(), loaded.unwrap());
-                    screen.loading_dmis.remove(&path);
+                    if screen.loading_dmis.remove(&path) {
+                        screen
+                            .parsed_dmis
+                            .insert(path.clone(), loaded.unwrap());
+                    }
 
                     Task::none()
                 }
@@ -158,6 +165,10 @@ impl Screen for ExtractorScreen {
                                                 })
                                                 .ok()
                                         })
+                                        .filter(|path| {
+                                            path.extension()
+                                                == Some(OsStr::new("dmi"))
+                                        })
                                         .map(|path| {
                                             Task::done(wrap![
                                                 ExtractorMessage::LoadDMI(
@@ -221,6 +232,9 @@ impl Screen for ExtractorScreen {
                                         })
                                         .ok()
                                 })
+                                .filter(|path| {
+                                    path.extension() == Some(OsStr::new("dmi"))
+                                })
                                 .map(|path| {
                                     Task::done(wrap![
                                         ExtractorMessage::LoadDMI(
@@ -235,7 +249,6 @@ impl Screen for ExtractorScreen {
                     {
                         return Task::none();
                     }
-                    screen.loading_dmis.insert(path.clone());
                     screen.hovered_file = false;
                     Task::done(wrap![ExtractorMessage::LoadDMI(path)])
                 }
@@ -311,14 +324,18 @@ impl Screen for ExtractorScreen {
                 tooltip += "\n";
             }
             let tooltip = column!(text(tooltip));
-            return container(column![
-                input_controls,
-                container(tooltip)
-                    .style(container::bordered_box)
-                    .padding(50)
-                    .center_x(Length::Fill)
-                    .center_y(Length::Fill)
-            ])
+            return container(
+                column![
+                    input_controls,
+                    container(tooltip)
+                        .style(container::bordered_box)
+                        .padding(50)
+                        .center_x(Length::Fill)
+                        .center_y(Length::Fill)
+                ]
+                .spacing(10),
+            )
+            .padding(20)
             .into();
         }
 
