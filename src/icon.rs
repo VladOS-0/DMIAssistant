@@ -1,6 +1,6 @@
 // Generated automatically by iced_fontello at build time.
 // Do not edit manually. Source: ../assets/fonts/fontello.toml
-// d6bb8e29153df2fe67d93d4dd0ee218222d372a8ab376a3fbcf1dcfb5e3eae1f
+// b9342d19c700b770d34da38c7a8feb87ccca799c73b726ca09fbccd1f53ffa2a
 use iced::widget::{text, Text};
 use iced::Font;
 
@@ -10,8 +10,12 @@ pub fn edit<'a>() -> Text<'a> {
     icon("\u{270E}")
 }
 
-pub fn file_explorer<'a>() -> Text<'a> {
+pub fn folder<'a>() -> Text<'a> {
     icon("\u{1F4C2}")
+}
+
+pub fn iconfile<'a>() -> Text<'a> {
+    icon("\u{F1C5}")
 }
 
 pub fn open<'a>() -> Text<'a> {
@@ -24,6 +28,10 @@ pub fn palette<'a>() -> Text<'a> {
 
 pub fn save<'a>() -> Text<'a> {
     icon("\u{1F4BE}")
+}
+
+pub fn search<'a>() -> Text<'a> {
+    icon("\u{1F50D}")
 }
 
 pub fn settings<'a>() -> Text<'a> {

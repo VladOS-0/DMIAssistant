@@ -25,7 +25,7 @@ pub fn main() -> iced::Result {
             ..Default::default()
         })
         .window(window::Settings {
-            size: Size::new(1300.0, 900.0),
+            size: Size::new(1500.0, 900.0),
             decorations: true,
             icon: from_file_data(
                 include_bytes!("../assets/images/icon.png"),

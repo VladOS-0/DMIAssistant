@@ -59,7 +59,7 @@ use crate::DMIAssistant;
 use crate::Message;
 
 #[derive(Debug, Clone)]
-pub enum DebuggerMessage {
+pub enum ViewerMessage {
     ChangeDMIPath(String),
     LoadDMI,
     DMILoaded(Result<(Icon, ParsedDMI), String>),
@@ -81,7 +81,7 @@ pub enum DebuggerMessage {
 }
 
 #[derive(Default, Debug, Clone)]
-pub struct DebuggerScreen {
+pub struct ViewerScreen {
     pub dmi_path: String,
     pub dmi_raw_icon: Icon,
     pub parsed_dmi: ParsedDMI,
@@ -97,20 +97,20 @@ pub struct DebuggerScreen {
     pub display_settings: DisplaySettings,
 }
 
-impl Screen for DebuggerScreen {
+impl Screen for ViewerScreen {
     fn label(&self) -> TabLabel {
-        TabLabel::IconText('\u{270E}', " Debugger".to_string())
+        TabLabel::IconText('\u{270E}', " DMI Viewer".to_string())
     }
 
     fn update(app: &mut DMIAssistant, message: Message) -> Task<Message> {
-        let screen = &mut app.debugger_screen;
-        if let Message::DebuggerMessage(screen_message) = message {
+        let screen = &mut app.viewer_screen;
+        if let Message::ViewerMessage(screen_message) = message {
             match screen_message {
-                DebuggerMessage::ChangeDMIPath(path) => {
+                ViewerMessage::ChangeDMIPath(path) => {
                     screen.dmi_path = path;
                     Task::none()
                 }
-                DebuggerMessage::LoadDMI => {
+                ViewerMessage::LoadDMI => {
                     screen.loading_dmi_in_progress = true;
                     let path = screen.dmi_path.clone();
                     let filter_type: FilterType = screen
@@ -127,7 +127,7 @@ impl Screen for DebuggerScreen {
                         let load_start = Instant::now();
                         let opened_dmi = load_dmi(path);
                         if opened_dmi.is_err() {
-                            return wrap![DebuggerMessage::DMILoaded(Err(
+                            return wrap![ViewerMessage::DMILoaded(Err(
                                 format!("{}", opened_dmi.unwrap_err())
                             ))];
                         }
@@ -142,12 +142,12 @@ impl Screen for DebuggerScreen {
                             "DMI parsed in {}ms",
                             load_start.elapsed().as_millis()
                         );
-                        wrap![DebuggerMessage::DMILoaded(Ok((
+                        wrap![ViewerMessage::DMILoaded(Ok((
                             opened_dmi, parsed_dmi
                         )))]
                     })
                 }
-                DebuggerMessage::DMILoaded(result) => {
+                ViewerMessage::DMILoaded(result) => {
                     if let Err(err) = result {
                         eprintln!("{err}");
                         screen.loading_dmi_in_progress = false;
@@ -159,7 +159,7 @@ impl Screen for DebuggerScreen {
                     screen.loading_dmi_in_progress = false;
                     Task::none()
                 }
-                DebuggerMessage::OpenedFileExplorer => {
+                ViewerMessage::OpenedFileExplorer => {
                     let file = FileDialog::new()
                         .add_filter("dmi", &["dmi"])
                         .set_directory("/")
@@ -170,13 +170,13 @@ impl Screen for DebuggerScreen {
                         .to_string();
 
                     if !file.is_empty() {
-                        Task::done(wrap![DebuggerMessage::ChangeDMIPath(file)])
-                            .chain(Task::done(wrap![DebuggerMessage::LoadDMI]))
+                        Task::done(wrap![ViewerMessage::ChangeDMIPath(file)])
+                            .chain(Task::done(wrap![ViewerMessage::LoadDMI]))
                     } else {
                         Task::none()
                     }
                 }
-                DebuggerMessage::ColorPickerOpened(picker) => {
+                ViewerMessage::ColorPickerOpened(picker) => {
                     match picker {
                         ColorPickerType::DefaultStateboxColor => {
                             screen.color_picker_statebox_visible = true
@@ -187,7 +187,7 @@ impl Screen for DebuggerScreen {
                     }
                     Task::none()
                 }
-                DebuggerMessage::ColorPickerClosed(picker) => {
+                ViewerMessage::ColorPickerClosed(picker) => {
                     match picker {
                         ColorPickerType::DefaultStateboxColor => {
                             screen.color_picker_statebox_visible = false
@@ -198,7 +198,7 @@ impl Screen for DebuggerScreen {
                     }
                     Task::none()
                 }
-                DebuggerMessage::ColorChange(picker, color) => {
+                ViewerMessage::ColorChange(picker, color) => {
                     match picker {
                         ColorPickerType::DefaultStateboxColor => {
                             screen
@@ -217,35 +217,35 @@ impl Screen for DebuggerScreen {
                     }
                     Task::none()
                 }
-                DebuggerMessage::ToggleSettingsVisibility(visible) => {
+                ViewerMessage::ToggleSettingsVisibility(visible) => {
                     screen.settings_visible = visible;
                     screen.color_picker_statebox_visible = false;
                     screen.color_picker_text_visible = false;
                     Task::none()
                 }
-                DebuggerMessage::ToggleDebug(active) => {
+                ViewerMessage::ToggleDebug(active) => {
                     screen.display_settings.statebox_default.debug = active;
                     Task::none()
                 }
-                DebuggerMessage::ToggleAnimated(active) => {
+                ViewerMessage::ToggleAnimated(active) => {
                     screen.display_settings.statebox_default.animated = active;
                     Task::none()
                 }
-                DebuggerMessage::ToggleResizeDisplay(active) => {
+                ViewerMessage::ToggleResizeDisplay(active) => {
                     screen.display_settings.statebox_default.show_resized =
                         active;
                     Task::none()
                 }
-                DebuggerMessage::ChangeResize(resizing) => {
+                ViewerMessage::ChangeResize(resizing) => {
                     screen.display_settings.statebox_default.resize = resizing;
                     Task::none()
                 }
-                DebuggerMessage::ChangeFilterType(filter_type) => {
+                ViewerMessage::ChangeFilterType(filter_type) => {
                     screen.display_settings.statebox_default.filter_type =
                         Some(filter_type);
                     Task::none()
                 }
-                DebuggerMessage::PerformResize => {
+                ViewerMessage::PerformResize => {
                     screen.parsed_dmi.resize(
                         screen.display_settings.statebox_default.resize,
                         screen
@@ -258,7 +258,7 @@ impl Screen for DebuggerScreen {
                     Task::none()
                 }
 
-                DebuggerMessage::CopyImage(
+                ViewerMessage::CopyImage(
                     state,
                     animated,
                     original,
@@ -346,7 +346,7 @@ impl Screen for DebuggerScreen {
                         .unwrap_or("FAILED TO RESOLVE FILE")
                         .to_owned();
                     screen.hovered_file = false;
-                    Task::done(wrap![DebuggerMessage::LoadDMI])
+                    Task::done(wrap![ViewerMessage::LoadDMI])
                 }
 
                 _ => Task::none(),
@@ -357,7 +357,7 @@ impl Screen for DebuggerScreen {
     }
 
     fn view(app: &DMIAssistant) -> Element<'_, Message> {
-        let screen = &app.debugger_screen;
+        let screen = &app.viewer_screen;
         /*
          *
          * PLACEHOLDERS
@@ -386,21 +386,21 @@ impl Screen for DebuggerScreen {
          *
          */
         let input_path = text_input("Input DMI path", &screen.dmi_path)
-            .on_input(|input| wrap![DebuggerMessage::ChangeDMIPath(input)])
-            .on_paste(|input| wrap![DebuggerMessage::ChangeDMIPath(input)])
-            .on_submit(wrap![DebuggerMessage::LoadDMI])
+            .on_input(|input| wrap![ViewerMessage::ChangeDMIPath(input)])
+            .on_paste(|input| wrap![ViewerMessage::ChangeDMIPath(input)])
+            .on_submit(wrap![ViewerMessage::LoadDMI])
             .padding(10);
 
         let button_load: Button<Message> =
             button(row![icon::open(), text(" Open File")])
-                .on_press(wrap![DebuggerMessage::LoadDMI]);
+                .on_press(wrap![ViewerMessage::LoadDMI]);
 
         let button_explorer: Button<Message> =
-            button(row![icon::file_explorer(), text(" Open Explorer")])
-                .on_press(wrap![DebuggerMessage::OpenedFileExplorer]);
+            button(row![icon::iconfile(), text(" Open Explorer")])
+                .on_press(wrap![ViewerMessage::OpenedFileExplorer]);
         let settings_button: Button<Message> =
             button(row![icon::settings(), text(" Settings")]).on_press(wrap![
-                DebuggerMessage::ToggleSettingsVisibility(
+                ViewerMessage::ToggleSettingsVisibility(
                     !screen.settings_visible
                 )
             ]);
@@ -423,15 +423,15 @@ impl Screen for DebuggerScreen {
                     text(" Set Stateboxes Color")
                 ])
                 .on_press(wrap![
-                    DebuggerMessage::ColorPickerOpened(
+                    ViewerMessage::ColorPickerOpened(
                         ColorPickerType::DefaultStateboxColor
                     )
                 ]),
-                wrap![DebuggerMessage::ColorPickerClosed(
+                wrap![ViewerMessage::ColorPickerClosed(
                     ColorPickerType::DefaultStateboxColor
                 )],
                 |color| {
-                    wrap![DebuggerMessage::ColorChange(
+                    wrap![ViewerMessage::ColorChange(
                         ColorPickerType::DefaultStateboxColor,
                         color
                     )]
@@ -442,14 +442,14 @@ impl Screen for DebuggerScreen {
                 screen.color_picker_text_visible,
                 screen.display_settings.statebox_default.background_color,
                 Button::new(row![icon::text_cursor(), text(" Set Text Color")])
-                    .on_press(wrap![DebuggerMessage::ColorPickerOpened(
+                    .on_press(wrap![ViewerMessage::ColorPickerOpened(
                         ColorPickerType::DefaultTextColor
                     )]),
-                wrap![DebuggerMessage::ColorPickerClosed(
+                wrap![ViewerMessage::ColorPickerClosed(
                     ColorPickerType::DefaultTextColor
                 )],
                 |color| {
-                    wrap![DebuggerMessage::ColorChange(
+                    wrap![ViewerMessage::ColorChange(
                         ColorPickerType::DefaultTextColor,
                         color
                     )]
@@ -460,20 +460,20 @@ impl Screen for DebuggerScreen {
                 toggler(screen.display_settings.statebox_default.debug)
                     .label("Debug Info")
                     .on_toggle(|state| {
-                        wrap![DebuggerMessage::ToggleDebug(state)]
+                        wrap![ViewerMessage::ToggleDebug(state)]
                     });
 
             let animated_toggler: Toggler<Message> =
                 toggler(screen.display_settings.statebox_default.animated)
                     .label("Animated View")
                     .on_toggle(|state| {
-                        wrap![DebuggerMessage::ToggleAnimated(state)]
+                        wrap![ViewerMessage::ToggleAnimated(state)]
                     });
             let resizing_display_toggler: Toggler<Message> =
                 toggler(screen.display_settings.statebox_default.show_resized)
                     .label("Show resized images")
                     .on_toggle(|state| {
-                        wrap![DebuggerMessage::ToggleResizeDisplay(state)]
+                        wrap![ViewerMessage::ToggleResizeDisplay(state)]
                     });
             let resize_toggler: Toggler<Message> = toggler(
                 screen.display_settings.statebox_default.resize
@@ -482,11 +482,11 @@ impl Screen for DebuggerScreen {
             .label("Resize images")
             .on_toggle(|state| {
                 if state {
-                    wrap![DebuggerMessage::ChangeResize(
+                    wrap![ViewerMessage::ChangeResize(
                         StateboxResizing::default()
                     )]
                 } else {
-                    wrap![DebuggerMessage::ChangeResize(
+                    wrap![ViewerMessage::ChangeResize(
                         StateboxResizing::Original
                     )]
                 }
@@ -500,7 +500,7 @@ impl Screen for DebuggerScreen {
                 StateboxResizing::Resized { height, width } => {
                     let height_number_picker: NumberInput<u32, Message> =
                         NumberInput::new(height, 32..=512, move |new_height| {
-                            wrap![DebuggerMessage::ChangeResize(
+                            wrap![ViewerMessage::ChangeResize(
                                 StateboxResizing::Resized {
                                     height: new_height,
                                     width,
@@ -510,7 +510,7 @@ impl Screen for DebuggerScreen {
                         .step(16);
                     let width_number_picker: NumberInput<u32, Message> =
                         NumberInput::new(width, 32..=512, move |new_width| {
-                            wrap![DebuggerMessage::ChangeResize(
+                            wrap![ViewerMessage::ChangeResize(
                                 StateboxResizing::Resized {
                                     height,
                                     width: new_width,
@@ -531,9 +531,7 @@ impl Screen for DebuggerScreen {
                         filter_types,
                         screen.display_settings.statebox_default.filter_type,
                         |filter_type| {
-                            wrap![DebuggerMessage::ChangeFilterType(
-                                filter_type
-                            )]
+                            wrap![ViewerMessage::ChangeFilterType(filter_type)]
                         },
                     )
                     .placeholder("Select filter type...");
@@ -555,8 +553,8 @@ impl Screen for DebuggerScreen {
                 }
             };
 
-            let resize_button: Button<Message> = button("Resize")
-                .on_press(wrap![DebuggerMessage::PerformResize]);
+            let resize_button: Button<Message> =
+                button("Resize").on_press(wrap![ViewerMessage::PerformResize]);
 
             settings_bar = column![
                 row![stateboxes_color_picker, text_color_picker].spacing(10),
@@ -594,7 +592,7 @@ impl Screen for DebuggerScreen {
     }
 }
 
-impl DebuggerScreen {
+impl ViewerScreen {
     fn get_statebox_settings(
         &self,
         statebox_name: &String,
@@ -658,7 +656,7 @@ impl DebuggerScreen {
                         if let Some(gif) = animated {
                             let gif = Gif::new(&gif.frames);
                             let gif = button(gif)
-                                .on_press(wrap![DebuggerMessage::CopyImage(
+                                .on_press(wrap![ViewerMessage::CopyImage(
                                     state.name.clone(),
                                     true,
                                     settings.show_resized,
@@ -692,15 +690,13 @@ impl DebuggerScreen {
                                     ),
                                 );
                                 let image_widget = button(image_widget)
-                                    .on_press(wrap![
-                                        DebuggerMessage::CopyImage(
-                                            state.name.clone(),
-                                            false,
-                                            settings.show_resized,
-                                            *direction,
-                                            Some(frame as usize)
-                                        )
-                                    ])
+                                    .on_press(wrap![ViewerMessage::CopyImage(
+                                        state.name.clone(),
+                                        false,
+                                        settings.show_resized,
+                                        *direction,
+                                        Some(frame as usize)
+                                    )])
                                     .style(|_theme, _status| button::Style {
                                         background: None,
                                         ..Default::default()

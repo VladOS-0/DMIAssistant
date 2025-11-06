@@ -4,7 +4,6 @@ use iced::{color, Background, Element, Task};
 use iced::{Length, Theme};
 use iced_aw::time_picker::Status;
 use iced_aw::{tab_bar, Tabs};
-use screens::parser::{ParserMessage, ParserScreen};
 
 pub mod dmi_model;
 pub mod dmi_utils;
@@ -14,8 +13,7 @@ pub mod widgets;
 
 use crate::screens::extractor::{ExtractorMessage, ExtractorScreen};
 use crate::screens::Screen;
-use screens::debugger::{DebuggerMessage, DebuggerScreen};
-use screens::loader::{LoaderMessage, LoaderScreen};
+use screens::viewer::{ViewerMessage, ViewerScreen};
 use screens::Screens;
 use utils::cleanup;
 
@@ -27,9 +25,7 @@ pub const DEFAULT_THEME: Theme = Theme::Nightfly;
 pub enum Message {
     Debug,
     Window(Id, Event),
-    LoaderMessage(LoaderMessage),
-    DebuggerMessage(DebuggerMessage),
-    ParserMessage(ParserMessage),
+    ViewerMessage(ViewerMessage),
     ExtractorMessage(ExtractorMessage),
     ChangeScreen(Screens),
 }
@@ -38,9 +34,7 @@ pub enum Message {
 pub struct DMIAssistant {
     pub current_screen: Screens,
 
-    pub debugger_screen: DebuggerScreen,
-    pub loader_screen: LoaderScreen,
-    pub parser_screen: ParserScreen,
+    pub viewer_screen: ViewerScreen,
     pub extractor_screen: ExtractorScreen,
 
     pub theme: Theme,
@@ -55,12 +49,10 @@ impl DMIAssistant {
                     iced::exit()
                 }
                 _ => match self.current_screen {
-                    Screens::Parser => ParserScreen::update(self, message),
-                    Screens::Loader => LoaderScreen::update(self, message),
-                    Screens::Debugger => DebuggerScreen::update(self, message),
                     Screens::Extractor => {
                         ExtractorScreen::update(self, message)
                     }
+                    Screens::Viewer => ViewerScreen::update(self, message),
                 },
             }
         } else {
@@ -69,14 +61,8 @@ impl DMIAssistant {
                     self.current_screen = screen;
                     Task::none()
                 }
-                Message::LoaderMessage(msg) => {
-                    LoaderScreen::update(self, Message::LoaderMessage(msg))
-                }
-                Message::ParserMessage(msg) => {
-                    ParserScreen::update(self, Message::ParserMessage(msg))
-                }
-                Message::DebuggerMessage(msg) => {
-                    DebuggerScreen::update(self, Message::DebuggerMessage(msg))
+                Message::ViewerMessage(msg) => {
+                    ViewerScreen::update(self, Message::ViewerMessage(msg))
                 }
                 Message::ExtractorMessage(msg) => ExtractorScreen::update(
                     self,
@@ -93,24 +79,14 @@ impl DMIAssistant {
             Tabs::new(Message::ChangeScreen)
                 .tab_icon_position(iced_aw::tabs::Position::Left)
                 .push(
-                    Screens::Parser,
-                    self.parser_screen.label(),
-                    ParserScreen::view(self),
-                )
-                .push(
-                    Screens::Loader,
-                    self.loader_screen.label(),
-                    LoaderScreen::view(self),
-                )
-                .push(
-                    Screens::Debugger,
-                    self.debugger_screen.label(),
-                    DebuggerScreen::view(self),
-                )
-                .push(
                     Screens::Extractor,
                     self.extractor_screen.label(),
                     ExtractorScreen::view(self),
+                )
+                .push(
+                    Screens::Viewer,
+                    self.viewer_screen.label(),
+                    ViewerScreen::view(self),
                 )
                 .set_active_tab(&self.current_screen)
                 .tab_label_spacing(20)

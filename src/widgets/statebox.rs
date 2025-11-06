@@ -4,7 +4,7 @@ use iced::{
 };
 use iced_aw::{Grid, GridRow};
 
-use crate::{dmi_model::ParsedState, screens::debugger::StateboxSettings};
+use crate::{dmi_model::ParsedState, screens::viewer::StateboxSettings};
 
 /// Statebox - widget, that displays one icon state according to StateboxSettings.
 #[derive(Debug, Clone)]

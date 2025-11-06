@@ -3,20 +3,18 @@ use iced_aw::TabLabel;
 
 use crate::{DMIAssistant, Message};
 
-pub mod debugger;
 pub mod extractor;
-pub mod loader;
-pub mod parser;
+pub mod viewer;
 
 /// Wrapping a screen's Message into the app's Message. Screen's message enum and variant in app's message enum must have the
 /// same name.
 /// ```
-/// use dmi_assistant::screens::debugger::DebuggerMessage;
+/// use dmi_assistant::screens::viewer::ViewerMessage;
 /// use dmi_assistant::Message;
 /// use dmi_assistant::wrap;
 ///
-/// // equals to Message::DebuggerMessage(DebuggerMessage::LoadDMI)
-/// wrap![DebuggerMessage::LoadDMI];
+/// // equals to Message::ViewerMessage(ViewerMessage::LoadDMI)
+/// wrap![ViewerMessage::LoadDMI];
 /// ```
 #[macro_export]
 macro_rules! wrap {
@@ -30,11 +28,9 @@ macro_rules! wrap {
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub enum Screens {
-    Parser,
-    Loader,
-    Debugger,
     #[default]
     Extractor,
+    Viewer,
 }
 
 pub trait Screen {

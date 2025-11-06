@@ -12,10 +12,7 @@ pub fn main() -> io::Result<()> {
             .set_language(0x0009) // English
             .set("ProductName", "DMI Assistant")
             .set("OriginalFilename", "DMI Assistant.exe")
-            .set(
-                "FileDescription",
-                "Simple GUI application for viewing DreamMaker Icon files.",
-            )
+            .set("FileDescription", "DMI Assistant")
             .set("LegalCopyright", "Copyleft ɔ Vlad0s")
             .compile()
             .expect("Building winresource");

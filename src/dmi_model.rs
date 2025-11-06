@@ -5,7 +5,7 @@ use iced_gif::Frames;
 use image::{imageops::FilterType, DynamicImage};
 
 use crate::{
-    dmi_utils::Directions, screens::debugger::StateboxResizing, utils::animate,
+    dmi_utils::Directions, screens::viewer::StateboxResizing, utils::animate,
 };
 
 #[derive(Debug, Clone, Default)]
