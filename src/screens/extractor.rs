@@ -7,9 +7,10 @@ use std::{
 
 use arboard::Clipboard;
 use iced::{
+    keyboard::{Key, Modifiers},
     widget::{
         button, column, container, row, scrollable, text, text_input, Column,
-        Space, TextInput,
+        Container, Space, Text, TextInput,
     },
     Element, Length, Task,
 };
@@ -36,6 +37,8 @@ pub enum ExtractorMessage {
     CopyText(String),
     RemoveDMI(PathBuf),
     ClearAll,
+    ChangeFilteredText(String),
+    ToggleFilter(bool),
 }
 
 #[derive(Default, Debug, Clone)]
@@ -44,6 +47,29 @@ pub struct ExtractorScreen {
     path_in_input: String,
     loading_dmis: BTreeSet<PathBuf>,
     parsed_dmis: BTreeMap<PathBuf, Vec<String>>,
+    filtered_text: String,
+    filter_opened: bool,
+}
+
+impl ExtractorScreen {
+    fn filter_view<'a>(screen: &ExtractorScreen) -> Container<'a, Message> {
+        if screen.filter_opened {
+            container(
+                text_input("Enter text to find...", &screen.filtered_text)
+                    .on_input(|input| {
+                        wrap![ExtractorMessage::ChangeFilteredText(input)]
+                    })
+                    .on_paste(|input| {
+                        wrap![ExtractorMessage::ChangeFilteredText(input)]
+                    })
+                    .padding(10),
+            )
+            .style(container::bordered_box)
+            .padding(10)
+        } else {
+            container("")
+        }
+    }
 }
 
 impl Screen for ExtractorScreen {
@@ -53,178 +79,8 @@ impl Screen for ExtractorScreen {
 
     fn update(app: &mut DMIAssistant, message: Message) -> Task<Message> {
         let screen = &mut app.extractor_screen;
-        if let Message::ExtractorMessage(screen_message) = message {
-            match screen_message {
-                ExtractorMessage::LoadDMI(path) => {
-                    screen.loading_dmis.insert(path.clone());
-                    Task::future(async move {
-                        let load_start = Instant::now();
-                        let opened_dmi = load_dmi(path.clone());
-                        if opened_dmi.is_err() {
-                            return wrap![ExtractorMessage::DMILoaded((
-                                path,
-                                Err(format!("{}", opened_dmi.unwrap_err()),)
-                            ))];
-                        }
-                        let opened_dmi = opened_dmi.unwrap();
-
-                        let existing_states: Vec<String> = opened_dmi
-                            .states
-                            .iter()
-                            .map(|state| state.name.clone())
-                            .collect();
-
-                        println!(
-                            "DMI parsed in {}ms",
-                            load_start.elapsed().as_millis()
-                        );
-                        wrap![ExtractorMessage::DMILoaded((
-                            path,
-                            Ok(existing_states)
-                        ))]
-                    })
-                }
-                ExtractorMessage::DMILoaded((path, loaded)) => {
-                    if let Err(err) = loaded {
-                        eprintln!("{err}");
-                        screen.loading_dmis.remove(&path);
-                        return Task::done(popup(
-                            format!(
-                                "Failed to load DMI: {}; Reason: {}",
-                                path.to_string_lossy(),
-                                err
-                            ),
-                            Some("Load failed"),
-                            ToastLevel::Warning,
-                        ));
-                    }
-                    if screen.loading_dmis.remove(&path) {
-                        screen
-                            .parsed_dmis
-                            .insert(path.clone(), loaded.unwrap());
-                    }
-
-                    Task::done(popup(
-                        format!("Loaded {}", path.to_string_lossy(),),
-                        Some("Loaded DMI"),
-                        ToastLevel::Success,
-                    ))
-                }
-                ExtractorMessage::CopyDMI(path) => {
-                    let states = screen
-                        .parsed_dmis
-                        .get(&path)
-                        .unwrap_or(&Vec::new())
-                        .join(", ");
-                    let _ = Clipboard::new().unwrap().set_text(states);
-                    Task::done(popup(
-                        "All states were copied",
-                        Some("Copied"),
-                        ToastLevel::Success,
-                    ))
-                }
-                ExtractorMessage::CopyText(text) => {
-                    let _ = Clipboard::new().unwrap().set_text(text);
-                    Task::done(popup(
-                        "Text was copied",
-                        Some("Copied"),
-                        ToastLevel::Success,
-                    ))
-                }
-                ExtractorMessage::RemoveDMI(path) => {
-                    screen.parsed_dmis.remove(&path);
-                    Task::done(popup(
-                        format!(
-                            "{} was removed from extractor",
-                            path.to_string_lossy()
-                        ),
-                        Some("Removed"),
-                        ToastLevel::Success,
-                    ))
-                }
-                ExtractorMessage::ClearAll => {
-                    screen.parsed_dmis.clear();
-                    screen.loading_dmis.clear();
-                    Task::done(popup(
-                        "Extractor was cleared",
-                        Some("Removed All"),
-                        ToastLevel::Success,
-                    ))
-                }
-                ExtractorMessage::ChangeInputDMIPath(new_string) => {
-                    screen.path_in_input = new_string;
-                    Task::none()
-                }
-                ExtractorMessage::OpenedFileExplorer(browse_dirs) => {
-                    let files = if browse_dirs {
-                        FileDialog::new()
-                            .set_title("Open folders with DMIs")
-                            .set_directory("/")
-                            .pick_folders()
-                    } else {
-                        FileDialog::new()
-                            .set_title("Open DMIs")
-                            .set_directory("/")
-                            .add_filter("dmi", &["dmi"])
-                            .pick_files()
-                    };
-
-                    if let Some(paths) = files {
-                        let dummy = PathBuf::new();
-
-                        Task::batch(paths.into_iter().map(|path| {
-                            if path.is_dir() {
-                                Task::batch(
-                                    WalkDir::new(path)
-                                        .max_depth(20)
-                                        .into_iter()
-                                        .filter_map(|entry| {
-                                            entry
-                                                .and_then(|entry| {
-                                                    {
-                                                        entry.metadata().map(
-                                                            |metadata| {
-                                                                if metadata
-                                                                    .is_file()
-                                                                {
-                                                                    entry
-                                                                .path()
-                                                                .to_path_buf()
-                                                                } else {
-                                                                    dummy
-                                                                        .clone()
-                                                                }
-                                                            },
-                                                        )
-                                                    }
-                                                })
-                                                .ok()
-                                        })
-                                        .filter(|path| {
-                                            path.extension()
-                                                == Some(OsStr::new("dmi"))
-                                        })
-                                        .map(|path| {
-                                            Task::done(wrap![
-                                                ExtractorMessage::LoadDMI(
-                                                    path.to_path_buf()
-                                                )
-                                            ])
-                                        }),
-                                )
-                            } else {
-                                Task::done(wrap![ExtractorMessage::LoadDMI(
-                                    path
-                                )])
-                            }
-                        }))
-                    } else {
-                        Task::none()
-                    }
-                }
-            }
-        } else if let Message::Window(_id, event) = message {
-            match event {
+        match message {
+            Message::Window(_id, event) => match event {
                 iced::window::Event::FileHovered(_) => {
                     screen.hovered_file = true;
                     Task::none()
@@ -289,9 +145,202 @@ impl Screen for ExtractorScreen {
                 }
 
                 _ => Task::none(),
+            },
+
+            Message::Keyboard(key, modifiers) => {
+                println!("{:?} {:?}", key, modifiers);
+                if modifiers.contains(Modifiers::CTRL)
+                    && (key == Key::Character("f".into())
+                        || key == Key::Character("F".into()))
+                {
+                    return Task::done(wrap![ExtractorMessage::ToggleFilter(
+                        !screen.filter_opened
+                    )]);
+                }
+
+                Task::none()
             }
-        } else {
-            Task::none()
+
+            Message::ExtractorMessage(extractor_message) => {
+                match extractor_message {
+                    ExtractorMessage::LoadDMI(path) => {
+                        screen.loading_dmis.insert(path.clone());
+                        Task::future(async move {
+                            let load_start = Instant::now();
+                            let opened_dmi = load_dmi(path.clone());
+                            if opened_dmi.is_err() {
+                                return wrap![ExtractorMessage::DMILoaded((
+                                    path,
+                                    Err(format!("{}", opened_dmi.unwrap_err()),)
+                                ))];
+                            }
+                            let opened_dmi = opened_dmi.unwrap();
+
+                            let existing_states: Vec<String> = opened_dmi
+                                .states
+                                .iter()
+                                .map(|state| state.name.clone())
+                                .collect();
+
+                            println!(
+                                "DMI parsed in {}ms",
+                                load_start.elapsed().as_millis()
+                            );
+                            wrap![ExtractorMessage::DMILoaded((
+                                path,
+                                Ok(existing_states)
+                            ))]
+                        })
+                    }
+                    ExtractorMessage::DMILoaded((path, loaded)) => {
+                        if let Err(err) = loaded {
+                            eprintln!("{err}");
+                            screen.loading_dmis.remove(&path);
+                            return Task::done(popup(
+                                format!(
+                                    "Failed to load DMI: {}; Reason: {}",
+                                    path.to_string_lossy(),
+                                    err
+                                ),
+                                Some("Load failed"),
+                                ToastLevel::Warning,
+                            ));
+                        }
+                        if screen.loading_dmis.remove(&path) {
+                            screen
+                                .parsed_dmis
+                                .insert(path.clone(), loaded.unwrap());
+                        }
+
+                        Task::done(popup(
+                            format!("Loaded {}", path.to_string_lossy(),),
+                            Some("Loaded DMI"),
+                            ToastLevel::Success,
+                        ))
+                    }
+                    ExtractorMessage::CopyDMI(path) => {
+                        let states = screen
+                            .parsed_dmis
+                            .get(&path)
+                            .unwrap_or(&Vec::new())
+                            .join(", ");
+                        let _ = Clipboard::new().unwrap().set_text(states);
+                        Task::done(popup(
+                            "All states were copied",
+                            Some("Copied"),
+                            ToastLevel::Success,
+                        ))
+                    }
+                    ExtractorMessage::CopyText(text) => {
+                        let _ = Clipboard::new().unwrap().set_text(text);
+                        Task::done(popup(
+                            "Text was copied",
+                            Some("Copied"),
+                            ToastLevel::Success,
+                        ))
+                    }
+                    ExtractorMessage::RemoveDMI(path) => {
+                        screen.parsed_dmis.remove(&path);
+                        Task::done(popup(
+                            format!(
+                                "{} was removed from extractor",
+                                path.to_string_lossy()
+                            ),
+                            Some("Removed"),
+                            ToastLevel::Success,
+                        ))
+                    }
+                    ExtractorMessage::ClearAll => {
+                        screen.parsed_dmis.clear();
+                        screen.loading_dmis.clear();
+                        Task::done(popup(
+                            "Extractor was cleared",
+                            Some("Removed All"),
+                            ToastLevel::Success,
+                        ))
+                    }
+                    ExtractorMessage::ChangeInputDMIPath(new_string) => {
+                        screen.path_in_input = new_string;
+                        Task::none()
+                    }
+                    ExtractorMessage::OpenedFileExplorer(browse_dirs) => {
+                        let files = if browse_dirs {
+                            FileDialog::new()
+                                .set_title("Open folders with DMIs")
+                                .set_directory("/")
+                                .pick_folders()
+                        } else {
+                            FileDialog::new()
+                                .set_title("Open DMIs")
+                                .set_directory("/")
+                                .add_filter("dmi", &["dmi"])
+                                .pick_files()
+                        };
+
+                        if let Some(paths) = files {
+                            let dummy = PathBuf::new();
+
+                            Task::batch(paths.into_iter().map(|path| {
+                                if path.is_dir() {
+                                    Task::batch(
+                                        WalkDir::new(path)
+                                            .max_depth(20)
+                                            .into_iter()
+                                            .filter_map(|entry| {
+                                                entry
+                                                .and_then(|entry| {
+                                                    {
+                                                        entry.metadata().map(
+                                                            |metadata| {
+                                                                if metadata
+                                                                    .is_file()
+                                                                {
+                                                                    entry
+                                                                .path()
+                                                                .to_path_buf()
+                                                                } else {
+                                                                    dummy
+                                                                        .clone()
+                                                                }
+                                                            },
+                                                        )
+                                                    }
+                                                })
+                                                .ok()
+                                            })
+                                            .filter(|path| {
+                                                path.extension()
+                                                    == Some(OsStr::new("dmi"))
+                                            })
+                                            .map(|path| {
+                                                Task::done(wrap![
+                                                    ExtractorMessage::LoadDMI(
+                                                        path.to_path_buf()
+                                                    )
+                                                ])
+                                            }),
+                                    )
+                                } else {
+                                    Task::done(wrap![
+                                        ExtractorMessage::LoadDMI(path)
+                                    ])
+                                }
+                            }))
+                        } else {
+                            Task::none()
+                        }
+                    }
+                    ExtractorMessage::ChangeFilteredText(new_text) => {
+                        screen.filtered_text = new_text;
+                        Task::none()
+                    }
+                    ExtractorMessage::ToggleFilter(status) => {
+                        screen.filter_opened = status;
+                        Task::none()
+                    }
+                }
+            }
+            _ => Task::none(),
         }
     }
 
@@ -325,6 +374,11 @@ impl Screen for ExtractorScreen {
                 )])
                 .padding(10);
 
+        let button_search = button(row![icon::search(), text(" Filter")])
+            .on_press(wrap![ExtractorMessage::ToggleFilter(
+                !screen.filter_opened
+            )]);
+
         let button_load = button(row![icon::open(), text(" Open File")])
             .on_press(wrap![ExtractorMessage::LoadDMI(
                 screen.path_in_input.clone().into()
@@ -344,6 +398,7 @@ impl Screen for ExtractorScreen {
 
         let input_controls = row![
             input_path,
+            button_search,
             clear_all,
             button_load,
             button_file_explorer,
@@ -396,44 +451,80 @@ impl Screen for ExtractorScreen {
 
         for (path, dmi) in &screen.parsed_dmis {
             let mut dmi_states_column: Column<Message> = Column::new();
+
+            let filter_selected_dmi =
+                path.to_string_lossy().contains(&screen.filtered_text);
+            let mut filter_selected_state = false;
+
             for state in dmi {
-                dmi_states_column = dmi_states_column.push(row![
-                    text!("{}  ", state),
-                    button(icon::save())
-                        .on_press(wrap![ExtractorMessage::CopyText(
-                            state.clone()
-                        )])
-                        .style(button::secondary)
-                ])
+                let mut filter_selected_this_state = false;
+                if state.contains(&screen.filtered_text) {
+                    filter_selected_state = true;
+                    filter_selected_this_state = true;
+                }
+                if filter_selected_dmi || filter_selected_this_state {
+                    let selected_mark: Text =
+                        text(if filter_selected_this_state {
+                            "✅  "
+                        } else if screen.filtered_text.is_empty() {
+                            ""
+                        } else {
+                            "❌️  "
+                        });
+                    dmi_states_column = dmi_states_column.push(row![
+                        row![selected_mark, text!("{}  ", state)],
+                        button(icon::save())
+                            .on_press(wrap![ExtractorMessage::CopyText(
+                                state.clone()
+                            )])
+                            .style(button::secondary)
+                    ])
+                }
             }
-            parsed_dmis_column = parsed_dmis_column.push(container(column![
-                row![
-                    bold_text(path.to_string_lossy()),
-                    button(row![icon::save(), text(" Copy All")]).on_press(
-                        wrap![ExtractorMessage::CopyDMI(path.clone())]
-                    ),
-                    button(row![icon::save(), text(" Copy Path")])
-                        .on_press(wrap![ExtractorMessage::CopyText(
-                            path.to_string_lossy().to_string()
-                        )])
-                        .style(button::secondary),
-                    button(row![icon::trash(), text(" Clear")])
-                        .on_press(wrap![ExtractorMessage::RemoveDMI(
-                            path.clone()
-                        )])
-                        .style(button::danger),
-                ]
-                .spacing(4),
-                dmi_states_column,
-                Space::with_height(40)
-            ]));
+            if filter_selected_state || filter_selected_dmi {
+                let selected_mark: Text = text(if filter_selected_dmi {
+                    "✅  "
+                } else if screen.filtered_text.is_empty() {
+                    ""
+                } else {
+                    "❌️  "
+                });
+                parsed_dmis_column =
+                    parsed_dmis_column.push(container(column![
+                        row![
+                            selected_mark,
+                            bold_text(path.to_string_lossy()),
+                            button(row![icon::save(), text(" Copy All")])
+                                .on_press(wrap![ExtractorMessage::CopyDMI(
+                                    path.clone()
+                                )]),
+                            button(row![icon::save(), text(" Copy Path")])
+                                .on_press(wrap![ExtractorMessage::CopyText(
+                                    path.to_string_lossy().to_string()
+                                )])
+                                .style(button::secondary),
+                            button(row![icon::trash(), text(" Clear")])
+                                .on_press(wrap![ExtractorMessage::RemoveDMI(
+                                    path.clone()
+                                )])
+                                .style(button::danger),
+                        ]
+                        .spacing(4),
+                        dmi_states_column,
+                        Space::with_height(40)
+                    ]));
+            }
         }
-        container(scrollable(column![
-            input_controls,
-            Space::with_height(50),
-            row![bold_text("Parsed:    "), Space::with_height(20)],
-            parsed_dmis_column
-        ]))
+        container(scrollable(
+            column![
+                input_controls,
+                ExtractorScreen::filter_view(screen),
+                Space::with_height(50),
+                row![bold_text("Parsed:    "), Space::with_height(20)],
+                parsed_dmis_column
+            ]
+            .spacing(10),
+        ))
         .center_x(Length::Fill)
         .center_y(Length::Fill)
         .padding(20)

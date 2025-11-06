@@ -1,3 +1,4 @@
+use iced::keyboard::{Key, Modifiers};
 use iced::widget::container;
 use iced::window::{Event, Id};
 use iced::{color, Background, Element, Task};
@@ -25,6 +26,7 @@ pub const DEFAULT_THEME: Theme = Theme::Nightfly;
 #[derive(Debug, Clone)]
 pub enum Message {
     Window(Id, Event),
+    Keyboard(Key, Modifiers),
 
     PushToast(Box<Toast<Message>>),
     DismissToast(ToastId),
@@ -48,8 +50,8 @@ pub struct DMIAssistant<'a> {
 
 impl DMIAssistant<'_> {
     pub fn update(&mut self, message: Message) -> Task<Message> {
-        if let Message::Window(_id, event) = &message {
-            match event {
+        match &message {
+            Message::Window(_id, event) => match event {
                 Event::Closed | Event::CloseRequested => {
                     cleanup();
                     iced::exit()
@@ -60,30 +62,31 @@ impl DMIAssistant<'_> {
                     }
                     Screens::Viewer => ViewerScreen::update(self, message),
                 },
+            },
+
+            Message::Keyboard(_, _) => match self.current_screen {
+                Screens::Extractor => ExtractorScreen::update(self, message),
+                Screens::Viewer => ViewerScreen::update(self, message),
+            },
+            Message::PushToast(boxed_toast) => {
+                self.toasts.push(boxed_toast.as_ref().clone());
+                Task::none()
             }
-        } else {
-            match message {
-                Message::PushToast(boxed_toast) => {
-                    self.toasts.push(boxed_toast.as_ref().clone());
-                    Task::none()
-                }
-                Message::DismissToast(id) => {
-                    self.toasts.dismiss(id);
-                    Task::none()
-                }
-                Message::ChangeScreen(screen) => {
-                    self.current_screen = screen;
-                    Task::none()
-                }
-                Message::ViewerMessage(msg) => {
-                    ViewerScreen::update(self, Message::ViewerMessage(msg))
-                }
-                Message::ExtractorMessage(msg) => ExtractorScreen::update(
-                    self,
-                    Message::ExtractorMessage(msg),
-                ),
-                _ => Task::none(),
+            Message::DismissToast(id) => {
+                self.toasts.dismiss(*id);
+                Task::none()
             }
+            Message::ChangeScreen(screen) => {
+                self.current_screen = screen.clone();
+                Task::none()
+            }
+            Message::ViewerMessage(msg) => {
+                ViewerScreen::update(self, Message::ViewerMessage(msg.clone()))
+            }
+            Message::ExtractorMessage(msg) => ExtractorScreen::update(
+                self,
+                Message::ExtractorMessage(msg.clone()),
+            ),
         }
     }
 

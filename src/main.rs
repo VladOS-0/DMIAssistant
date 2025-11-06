@@ -7,7 +7,7 @@ use dmi_assistant::{
 };
 use iced::{
     advanced::graphics::image::image_rs::ImageFormat,
-    font,
+    font, keyboard,
     window::{self, icon::from_file_data},
     Font, Size, Subscription,
 };
@@ -41,7 +41,12 @@ pub fn main() -> iced::Result {
 }
 
 fn subscription(_state: &DMIAssistant) -> Subscription<Message> {
-    window::events().map(|(id, event)| Message::Window(id, event))
+    Subscription::batch(vec![
+        keyboard::on_key_press(|key, modifiers| {
+            Some(Message::Keyboard(key, modifiers))
+        }),
+        window::events().map(|(id, event)| Message::Window(id, event)),
+    ])
 }
 
 pub fn settings() -> iced::Settings {
