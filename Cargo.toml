@@ -19,7 +19,7 @@ iced_toasts = "0.1.1"
 image = "0.25.5"
 log = "0.4.22"
 rfd = "0.15.1"
-serde = "1.0.228"
+serde = { version = "1.0.228", features = ["derive"]}
 thiserror = "2.0.6"
 toml = "0.9.8"
 walkdir = "2.5.0"
