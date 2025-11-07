@@ -83,6 +83,9 @@ pub enum ViewerMessage {
     ColorPickerOpened(ColorPickerType),
     ColorPickerClosed(ColorPickerType),
     ColorChange(ColorPickerType, Color),
+
+    ChangeFilteredText(String),
+    ToggleFilter(bool),
 }
 
 #[derive(Default, Debug, Clone)]
@@ -100,6 +103,182 @@ pub struct ViewerScreen {
     pub color_picker_text_visible: bool,
 
     pub display_settings: DisplaySettings,
+
+    pub filtered_text: String,
+    pub filter_opened: bool,
+}
+
+impl ViewerScreen {
+    fn filter_view<'a>(&self) -> Container<'a, Message> {
+        if self.filter_opened {
+            container(
+                text_input("Enter text to find...", &self.filtered_text)
+                    .on_input(|input| {
+                        wrap![ViewerMessage::ChangeFilteredText(input)]
+                    })
+                    .on_paste(|input| {
+                        wrap![ViewerMessage::ChangeFilteredText(input)]
+                    })
+                    .padding(10),
+            )
+            .style(container::bordered_box)
+            .padding(10)
+        } else {
+            container("")
+        }
+    }
+
+    fn get_statebox_settings(
+        &self,
+        statebox_name: &String,
+    ) -> &StateboxSettings {
+        self.display_settings
+            .unique_stateboxes
+            .get(statebox_name)
+            .unwrap_or(&self.display_settings.statebox_default)
+    }
+
+    fn display_statebox<'a>(
+        &'a self,
+        state_name: &String,
+    ) -> Container<'a, Message> {
+        if !state_name.contains(&self.filtered_text) {
+            return container("");
+        }
+        let state = self.parsed_dmi.states.get(state_name);
+        if state.is_none() {
+            return container(text!(
+                "State {} does not exist. It's probably a bug.",
+                state_name
+            ));
+        }
+        let state = state.unwrap();
+        let settings = self.get_statebox_settings(state_name);
+        let header: Column<Message> = if settings.debug {
+            column![
+                Space::new(1, 3),
+                row![text("State: "), bold_text(state.name.clone())],
+                Space::new(1, 3),
+                text!("Delay: {:?}", state.delay),
+                text!("Frames: {}", state.frames),
+                text!("Directions: {}", state.dirs.len()),
+                text!("Looping: {:?}", state.loop_flag),
+                text!("Movement: {}", state.movement),
+                text!("Rewind: {}", state.rewind),
+                Space::new(1, 10)
+            ]
+            .padding(5)
+            .spacing(5)
+        } else {
+            column![bold_text(state.name.clone()), Space::new(1, 10)]
+                .padding(5)
+                .spacing(5)
+                .align_x(Horizontal::Center)
+        };
+
+        let display: Grid<Message> = {
+            let mut dirs: VecDeque<GridRow<Message>> = state
+                .dirs
+                .keys()
+                .map(|direction| {
+                    let mut row: GridRow<Message> = GridRow::default();
+                    row = row.push(text(direction.to_string()));
+                    if settings.animated {
+                        let animated = {
+                            if settings.show_resized {
+                                state.get_animated(direction)
+                            } else {
+                                state.get_original_animated(direction)
+                            }
+                        };
+                        if let Some(gif) = animated {
+                            let gif = Gif::new(&gif.frames);
+                            let gif = button(gif)
+                                .on_press(wrap![ViewerMessage::CopyImage(
+                                    state.name.clone(),
+                                    true,
+                                    settings.show_resized,
+                                    *direction,
+                                    None
+                                )])
+                                .style(|_theme, _status| button::Style {
+                                    background: None,
+                                    ..Default::default()
+                                });
+                            row = row.push(gif);
+                        }
+                    } else {
+                        for frame in 0..state.frames {
+                            let icon = {
+                                if settings.show_resized {
+                                    state.get_frame(direction, frame as usize)
+                                } else {
+                                    state.get_original_frame(
+                                        direction,
+                                        frame as usize,
+                                    )
+                                }
+                            };
+                            if let Some(icon) = icon {
+                                let image_widget: Image = Image::new(
+                                    iced::widget::image::Handle::from_rgba(
+                                        icon.width(),
+                                        icon.height(),
+                                        icon.clone().into_bytes(),
+                                    ),
+                                );
+                                let image_widget = button(image_widget)
+                                    .on_press(wrap![ViewerMessage::CopyImage(
+                                        state.name.clone(),
+                                        false,
+                                        settings.show_resized,
+                                        *direction,
+                                        Some(frame as usize)
+                                    )])
+                                    .style(|_theme, _status| button::Style {
+                                        background: None,
+                                        ..Default::default()
+                                    });
+                                row = row.push(image_widget);
+                            } else {
+                                row = row.push(text("?"));
+                            }
+                        }
+                    }
+                    row
+                })
+                .collect();
+            if !settings.animated && state.frames > 1 {
+                let mut delay_row: GridRow<Message> = GridRow::new();
+                delay_row = delay_row.push(text("Delay"));
+                for delay in state.delay.as_ref().unwrap_or(&Vec::new()) {
+                    delay_row = delay_row.push(text(delay))
+                }
+                dirs.push_front(delay_row);
+            }
+            Grid::with_rows(dirs.into())
+                .column_width(self.parsed_dmi.displayed_width as f32 * 1.2)
+                .horizontal_alignment(Horizontal::Center)
+                .spacing(10)
+        };
+
+        let display = Scrollable::with_direction(
+            display,
+            Direction::Horizontal(Scrollbar::default()),
+        );
+        container(column![header, display])
+            .padding(10)
+            .style(|_theme| Style {
+                text_color: Some(settings.text_color),
+                background: Some(Background::Color(settings.background_color)),
+                border: Border {
+                    color: Color::BLACK,
+                    width: 2.0,
+                    radius: Radius::new(5),
+                },
+                shadow: Shadow::default(),
+            })
+    }
 }
 
 impl Screen for ViewerScreen {
@@ -282,7 +461,6 @@ impl Screen for ViewerScreen {
                         ToastLevel::Success,
                     ))
                 }
-
                 ViewerMessage::CopyImage(
                     state,
                     animated,
@@ -357,6 +535,14 @@ impl Screen for ViewerScreen {
                         Some("Copied"),
                         ToastLevel::Success,
                     ))
+                }
+                ViewerMessage::ChangeFilteredText(new_text) => {
+                    screen.filtered_text = new_text;
+                    Task::none()
+                }
+                ViewerMessage::ToggleFilter(status) => {
+                    screen.filter_opened = status;
+                    Task::none()
                 }
             }
         } else if let Message::Window(_id, event) = message {
@@ -433,11 +619,17 @@ impl Screen for ViewerScreen {
                 !screen.settings_visible
             )]);
 
+        let button_search = button(row![icon::search(), text(" Filter")])
+            .on_press(wrap![ViewerMessage::ToggleFilter(
+                !screen.filter_opened
+            )]);
+
         let input_bar =
             row![settings_button, input_path, button_load, button_explorer]
                 .spacing(10)
                 .align_y(Vertical::Center)
                 .padding(5);
+        let bottom_bar = row![button_search].spacing(10).padding(5);
 
         /*
          *
@@ -614,162 +806,17 @@ impl Screen for ViewerScreen {
             states_wrap = states_wrap.push(screen.display_statebox(state.0))
         }
 
-        let column = column![input_bar, settings_bar, states_wrap]
-            .padding(10)
-            .spacing(10);
+        let column = column![
+            input_bar,
+            bottom_bar,
+            screen.filter_view(),
+            settings_bar,
+            states_wrap
+        ]
+        .padding(10)
+        .spacing(10);
 
         container(scrollable(column).spacing(10)).padding(10).into()
-    }
-}
-
-impl ViewerScreen {
-    fn get_statebox_settings(
-        &self,
-        statebox_name: &String,
-    ) -> &StateboxSettings {
-        self.display_settings
-            .unique_stateboxes
-            .get(statebox_name)
-            .unwrap_or(&self.display_settings.statebox_default)
-    }
-
-    fn display_statebox<'a>(
-        &'a self,
-        state_name: &String,
-    ) -> Container<'a, Message> {
-        let state = self.parsed_dmi.states.get(state_name);
-        if state.is_none() {
-            return container(text!(
-                "State {} does not exist. It's probably a bug.",
-                state_name
-            ));
-        }
-        let state = state.unwrap();
-        let settings = self.get_statebox_settings(state_name);
-        let header: Column<Message> = if settings.debug {
-            column![
-                Space::new(1, 3),
-                row![text("State: "), bold_text(state.name.clone())],
-                Space::new(1, 3),
-                text!("Delay: {:?}", state.delay),
-                text!("Frames: {}", state.frames),
-                text!("Directions: {}", state.dirs.len()),
-                text!("Looping: {:?}", state.loop_flag),
-                text!("Movement: {}", state.movement),
-                text!("Rewind: {}", state.rewind),
-                Space::new(1, 10)
-            ]
-            .padding(5)
-            .spacing(5)
-        } else {
-            column![bold_text(state.name.clone()), Space::new(1, 10)]
-                .padding(5)
-                .spacing(5)
-                .align_x(Horizontal::Center)
-        };
-
-        let display: Grid<Message> = {
-            let mut dirs: VecDeque<GridRow<Message>> = state
-                .dirs
-                .keys()
-                .map(|direction| {
-                    let mut row: GridRow<Message> = GridRow::default();
-                    row = row.push(text(direction.to_string()));
-                    if settings.animated {
-                        let animated = {
-                            if settings.show_resized {
-                                state.get_animated(direction)
-                            } else {
-                                state.get_original_animated(direction)
-                            }
-                        };
-                        if let Some(gif) = animated {
-                            let gif = Gif::new(&gif.frames);
-                            let gif = button(gif)
-                                .on_press(wrap![ViewerMessage::CopyImage(
-                                    state.name.clone(),
-                                    true,
-                                    settings.show_resized,
-                                    *direction,
-                                    None
-                                )])
-                                .style(|_theme, _status| button::Style {
-                                    background: None,
-                                    ..Default::default()
-                                });
-                            row = row.push(gif);
-                        }
-                    } else {
-                        for frame in 0..state.frames {
-                            let icon = {
-                                if settings.show_resized {
-                                    state.get_frame(direction, frame as usize)
-                                } else {
-                                    state.get_original_frame(
-                                        direction,
-                                        frame as usize,
-                                    )
-                                }
-                            };
-                            if let Some(icon) = icon {
-                                let image_widget: Image = Image::new(
-                                    iced::widget::image::Handle::from_rgba(
-                                        icon.width(),
-                                        icon.height(),
-                                        icon.clone().into_bytes(),
-                                    ),
-                                );
-                                let image_widget = button(image_widget)
-                                    .on_press(wrap![ViewerMessage::CopyImage(
-                                        state.name.clone(),
-                                        false,
-                                        settings.show_resized,
-                                        *direction,
-                                        Some(frame as usize)
-                                    )])
-                                    .style(|_theme, _status| button::Style {
-                                        background: None,
-                                        ..Default::default()
-                                    });
-                                row = row.push(image_widget);
-                            } else {
-                                row = row.push(text("?"));
-                            }
-                        }
-                    }
-                    row
-                })
-                .collect();
-            if !settings.animated && state.frames > 1 {
-                let mut delay_row: GridRow<Message> = GridRow::new();
-                delay_row = delay_row.push(text("Delay"));
-                for delay in state.delay.as_ref().unwrap_or(&Vec::new()) {
-                    delay_row = delay_row.push(text(delay))
-                }
-                dirs.push_front(delay_row);
-            }
-            Grid::with_rows(dirs.into())
-                .column_width(self.parsed_dmi.displayed_width as f32 * 1.2)
-                .horizontal_alignment(Horizontal::Center)
-                .spacing(10)
-        };
-
-        let display = Scrollable::with_direction(
-            display,
-            Direction::Horizontal(Scrollbar::default()),
-        );
-        container(column![header, display])
-            .padding(10)
-            .style(|_theme| Style {
-                text_color: Some(settings.text_color),
-                background: Some(Background::Color(settings.background_color)),
-                border: Border {
-                    color: Color::BLACK,
-                    width: 2.0,
-                    radius: Radius::new(5),
-                },
-                shadow: Shadow::default(),
-            })
     }
 }
 

@@ -56,10 +56,10 @@ pub struct ExplorerScreen {
 }
 
 impl ExplorerScreen {
-    fn filter_view<'a>(screen: &ExplorerScreen) -> Container<'a, Message> {
-        if screen.filter_opened {
+    fn filter_view<'a>(&self) -> Container<'a, Message> {
+        if self.filter_opened {
             container(
-                text_input("Enter text to find...", &screen.filtered_text)
+                text_input("Enter text to find...", &self.filtered_text)
                     .on_input(|input| {
                         wrap![ExplorerMessage::ChangeFilteredText(input)]
                     })
@@ -533,7 +533,7 @@ impl Screen for ExplorerScreen {
             column![
                 input_controls,
                 output_controls,
-                ExplorerScreen::filter_view(screen),
+                screen.filter_view(),
                 Space::with_height(10),
                 row![bold_text("Parsed:    "), Space::with_height(20)],
                 parsed_dmis_column
