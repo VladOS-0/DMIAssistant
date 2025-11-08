@@ -17,6 +17,7 @@ pub mod widgets;
 use crate::config::Config;
 use crate::screens::Screen;
 use crate::screens::explorer::{ExplorerMessage, ExplorerScreen};
+use crate::screens::viewer::DisplaySettings;
 use screens::Screens;
 use screens::viewer::{ViewerMessage, ViewerScreen};
 use utils::cleanup;
@@ -55,11 +56,26 @@ pub struct DMIAssistant<'a> {
 
 impl DMIAssistant<'_> {
     pub fn new(config: Config) -> Self {
+        let mut viewer_screen = ViewerScreen {
+            display_settings: DisplaySettings {
+                statebox_default: config.statebox_defaults.clone().into(),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        viewer_screen.display_settings.statebox_default =
+            config.statebox_defaults.clone().into();
+
+        let explorer_screen = ExplorerScreen {
+            settings: config.explorer_settings.clone(),
+            ..Default::default()
+        };
+
         Self {
             config,
             current_screen: Default::default(),
-            viewer_screen: Default::default(),
-            explorer_screen: Default::default(),
+            viewer_screen,
+            explorer_screen,
             theme: Default::default(),
             toasts: toast_container(Message::DismissToast),
         }

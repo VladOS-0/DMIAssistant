@@ -19,6 +19,8 @@ use iced::Task;
 use iced::alignment::Horizontal;
 use iced::alignment::Vertical;
 use iced::border::Radius;
+use iced::keyboard::Key;
+use iced::keyboard::Modifiers;
 use iced::widget::Button;
 use iced::widget::Column;
 use iced::widget::Container;
@@ -52,6 +54,8 @@ use log::debug;
 use log::error;
 use log::warn;
 use rfd::FileDialog;
+use serde::Deserialize;
+use serde::Serialize;
 
 use super::Screen;
 
@@ -75,6 +79,9 @@ pub enum ViewerMessage {
     CopyImage(String, bool, bool, Directions, Option<usize>),
 
     ToggleSettingsVisibility(bool),
+    SaveSettings,
+    LoadSettings,
+    ResetSettings,
 
     ToggleDebug(bool),
     ToggleAnimated(bool),
@@ -291,6 +298,20 @@ impl Screen for ViewerScreen {
 
     fn update(app: &mut DMIAssistant, message: Message) -> Task<Message> {
         let screen = &mut app.viewer_screen;
+        if let Message::Keyboard(key, modifiers) = message {
+            if modifiers.contains(Modifiers::CTRL)
+                && (key == Key::Character("f".into())
+                    || key == Key::Character("F".into())
+                    || key == Key::Character("а".into())
+                    || key == Key::Character("А".into()))
+            {
+                return Task::done(wrap![ViewerMessage::ToggleFilter(
+                    !screen.filter_opened
+                )]);
+            }
+
+            return Task::none();
+        };
         if let Message::ViewerMessage(screen_message) = message {
             match screen_message {
                 ViewerMessage::ChangeDMIPath(path) => {
@@ -510,16 +531,11 @@ impl Screen for ViewerScreen {
                                 ));
                             }
                         } else {
-                            let anim = state.get_frame(&direction, 1);
-                            if let Some(animated) = anim {
-                                image_bytes = animated.as_bytes().to_vec();
-                            } else {
-                                return Task::done(popup(
-                                    "Failed to get the first frame of animation",
-                                    Some("Failed copy"),
-                                    ToastLevel::Error,
-                                ));
-                            }
+                            return Task::done(popup(
+                                "Animated copy is not supported on non-Windows platforms (and on Windows it is probably broken too)",
+                                Some("Boowomp"),
+                                ToastLevel::Error,
+                            ));
                         }
                     } else if original {
                         let icon = state
@@ -561,11 +577,15 @@ impl Screen for ViewerScreen {
                         #[cfg(target_os = "windows")]
                         {
                             let copy_result = clipboard_win::raw::set(
-                                clipboard_win::formats::CF_DIB,
+                                clipboard_win::formats::CF_DIF,
                                 &image_bytes,
                             );
 
                             if let Err(err) = copy_result {
+                                error!(
+                                    "Failed to copy animated image: {}",
+                                    err
+                                );
                                 return Task::done(popup(
                                     format!(
                                         "Failed to copy animated image: {}",
@@ -602,6 +622,37 @@ impl Screen for ViewerScreen {
                 ViewerMessage::ToggleFilter(status) => {
                     screen.filter_opened = status;
                     Task::none()
+                }
+                ViewerMessage::SaveSettings => {
+                    app.config.statebox_defaults =
+                        screen.display_settings.statebox_default.clone().into();
+                    app.config.save();
+                    Task::done(popup(
+                        "Saved settings to Config.toml",
+                        Some("Saved"),
+                        ToastLevel::Success,
+                    ))
+                }
+                ViewerMessage::LoadSettings => {
+                    screen.display_settings.statebox_default =
+                        app.config.statebox_defaults.clone().into();
+                    Task::done(popup(
+                        "Loaded settings from the in-memory config",
+                        Some("Loaded"),
+                        ToastLevel::Success,
+                    ))
+                }
+                ViewerMessage::ResetSettings => {
+                    screen.display_settings.statebox_default =
+                        StateboxSettings::default();
+                    screen.display_settings.unique_stateboxes.clear();
+                    screen.display_settings.unique_stateboxes.shrink_to_fit();
+
+                    Task::done(popup(
+                        "Settings were reset to default",
+                        Some("Reset"),
+                        ToastLevel::Success,
+                    ))
                 }
             }
         } else if let Message::Window(_id, event) = message {
@@ -838,6 +889,17 @@ impl Screen for ViewerScreen {
             let resize_button: Button<Message> =
                 button("Resize").on_press(wrap![ViewerMessage::PerformResize]);
 
+            let save_settings = button(row![icon::save(), "  Save Settings"])
+                .on_press(wrap![ViewerMessage::SaveSettings])
+                .style(button::success);
+            let load_settings =
+                button(row![icon::folder(), "  Reset Settings to Config"])
+                    .on_press(wrap![ViewerMessage::LoadSettings]);
+            let reset_settings =
+                button(row![icon::trash(), "  Reset Settings to Default"])
+                    .on_press(wrap![ViewerMessage::ResetSettings])
+                    .style(button::danger);
+
             settings_bar = column![
                 row![stateboxes_color_picker, text_color_picker].spacing(10),
                 debug_info_toggler,
@@ -845,7 +907,8 @@ impl Screen for ViewerScreen {
                 resizing_display_toggler,
                 resize_toggler,
                 resize_picker,
-                resize_button
+                resize_button,
+                row![save_settings, load_settings, reset_settings].spacing(5)
             ]
             .spacing(10);
         }
@@ -921,7 +984,7 @@ impl Default for StateboxSettings {
 const DEFAULT_HEIGHT_RESIZE: u32 = 64;
 const DEFAULT_WIDTH_RESIZE: u32 = 64;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum StateboxResizing {
     Original,
     Resized { height: u32, width: u32 },

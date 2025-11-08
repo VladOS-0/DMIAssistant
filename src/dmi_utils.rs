@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use dmi::dirs::Dirs;
 use dmi::icon::Icon;
 use image::imageops::FilterType;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 /// Errors, returned by DMIs parsing.
@@ -144,7 +145,9 @@ impl From<Directions> for u8 {
 }
 
 /// Filter type with derived display to satisfy iced
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize,
+)]
 pub enum CustomFilterType {
     /// Nearest Neighbor
     #[default]

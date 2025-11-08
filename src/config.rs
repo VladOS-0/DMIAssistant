@@ -5,11 +5,76 @@ use std::{
     path::PathBuf,
 };
 
+use iced::Color;
 use serde::{Deserialize, Serialize};
 
-use crate::utils::{Directories, get_project_dir};
+use crate::{
+    dmi_utils::CustomFilterType,
+    screens::{
+        explorer::ExplorerSettings,
+        viewer::{StateboxResizing, StateboxSettings},
+    },
+    utils::{Directories, get_project_dir},
+};
 
 const CONFIG_FILE_NAME: &str = "Config.toml";
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SerializableStateboxSettings {
+    pub linear_background_color: [f32; 4],
+    pub linear_text_color: [f32; 4],
+
+    pub debug: bool,
+    pub animated: bool,
+    pub show_resized: bool,
+
+    pub resize: StateboxResizing,
+    pub filter_type: Option<CustomFilterType>,
+}
+
+impl From<StateboxSettings> for SerializableStateboxSettings {
+    fn from(value: StateboxSettings) -> Self {
+        Self {
+            linear_background_color: value.background_color.into_linear(),
+            linear_text_color: value.text_color.into_linear(),
+            debug: value.debug,
+            animated: value.animated,
+            show_resized: value.show_resized,
+            resize: value.resize,
+            filter_type: value.filter_type,
+        }
+    }
+}
+
+impl From<SerializableStateboxSettings> for StateboxSettings {
+    fn from(value: SerializableStateboxSettings) -> Self {
+        Self {
+            background_color: Color::from_linear_rgba(
+                value.linear_background_color[0],
+                value.linear_background_color[1],
+                value.linear_background_color[2],
+                value.linear_background_color[3],
+            ),
+            text_color: Color::from_linear_rgba(
+                value.linear_text_color[0],
+                value.linear_text_color[1],
+                value.linear_text_color[2],
+                value.linear_text_color[3],
+            ),
+            debug: value.debug,
+            animated: value.animated,
+            show_resized: value.show_resized,
+            resize: value.resize,
+            filter_type: value.filter_type,
+        }
+    }
+}
+
+impl Default for SerializableStateboxSettings {
+    fn default() -> Self {
+        Self::from(StateboxSettings::default())
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -17,6 +82,10 @@ pub struct Config {
     pub log_dir: PathBuf,
     pub cache_dir: PathBuf,
     pub data_dir: PathBuf,
+    // for viewer screen
+    pub statebox_defaults: SerializableStateboxSettings,
+    // for extractor screen
+    pub explorer_settings: ExplorerSettings,
 }
 
 impl Default for Config {
@@ -27,6 +96,8 @@ impl Default for Config {
             log_dir: get_project_dir(Directories::Log),
             cache_dir: get_project_dir(Directories::Cache),
             data_dir: get_project_dir(Directories::Data),
+            statebox_defaults: SerializableStateboxSettings::default(),
+            explorer_settings: ExplorerSettings::default(),
         }
     }
 }

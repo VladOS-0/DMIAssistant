@@ -8,57 +8,95 @@ use std::{
 use arboard::Clipboard;
 use iced::{
     Element, Font, Length, Task,
+    advanced::{
+        self,
+        widget::{Operation, operation},
+    },
     alignment::{Horizontal, Vertical},
     color,
     font::Weight,
     keyboard::{Key, Modifiers},
     widget::{
-        Column, Container, Space, TextInput, button, column, container,
+        self, Column, Container, Space, TextInput, button, column, container,
         rich_text, row, scrollable, span, text, text_input,
     },
 };
-use iced_aw::TabLabel;
+use iced_aw::{NumberInput, TabLabel};
 use iced_toasts::ToastLevel;
 use log::{debug, error};
 use rfd::FileDialog;
+use serde::{Deserialize, Serialize};
 use walkdir::WalkDir;
 
 use crate::{
-    DMIAssistant, Message,
+    DMIAssistant, Message, ViewerMessage,
     dmi_utils::load_dmi,
     icon,
-    screens::Screen,
+    screens::{Screen, Screens},
     utils::{bold_text, popup},
     wrap,
 };
 
 const DEFAULT_PAGE_SIZE: usize = 50;
+const DEFAULT_DELIMETER: &str = ", ";
+
+const MAIN_EXPLORER_SCROLLABLE_ID: &str = "Main Explorer Scrollabe";
+const MAIN_EXPLORER_CONTAINER_ID: &str = "Main Explorer Container";
 
 #[derive(Debug, Clone)]
 pub enum ExplorerMessage {
     ChangeInputDMIPath(String),
     OpenedFileExplorer(bool),
+
     LoadDMI(PathBuf),
     DMILoaded((PathBuf, Result<Vec<String>, String>)),
+
     CopyDMI(PathBuf),
     CopyText(String),
+    OpenInViewer(PathBuf),
+
     RemoveDMI(PathBuf),
     ClearAll,
+
     ChangeFilteredText(String),
     ToggleFilter(bool),
+
     JumpToPage(usize, usize),
+
+    ToggleSettingsVisibility(bool),
+    SaveSettings,
+    LoadSettings,
+    ResetSettings,
+    ChangePageSize(usize),
+    ChangeDelimeter(String),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExplorerSettings {
+    pub page_size: usize,
+    pub delimeter: String,
+}
+
+impl Default for ExplorerSettings {
+    fn default() -> Self {
+        Self {
+            page_size: DEFAULT_PAGE_SIZE,
+            delimeter: DEFAULT_DELIMETER.to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default)]
 pub struct ExplorerScreen {
-    hovered_file: bool,
-    path_in_input: String,
-    loading_dmis: BTreeSet<PathBuf>,
-    parsed_dmis: BTreeMap<PathBuf, Vec<String>>,
-    filtered_text: String,
-    filter_opened: bool,
-    page_size: usize,
-    current_page: usize,
+    pub hovered_file: bool,
+    pub path_in_input: String,
+    pub loading_dmis: BTreeSet<PathBuf>,
+    pub parsed_dmis: BTreeMap<PathBuf, Vec<String>>,
+    pub filtered_text: String,
+    pub filter_opened: bool,
+    pub current_page: usize,
+    pub settings: ExplorerSettings,
+    pub settings_visible: bool,
 }
 
 impl ExplorerScreen {
@@ -78,21 +116,6 @@ impl ExplorerScreen {
             .padding(10)
         } else {
             container("")
-        }
-    }
-}
-
-impl Default for ExplorerScreen {
-    fn default() -> Self {
-        Self {
-            hovered_file: false,
-            path_in_input: String::new(),
-            loading_dmis: BTreeSet::new(),
-            parsed_dmis: BTreeMap::new(),
-            filtered_text: String::new(),
-            filter_opened: false,
-            page_size: DEFAULT_PAGE_SIZE,
-            current_page: 0,
         }
     }
 }
@@ -173,7 +196,9 @@ impl Screen for ExplorerScreen {
             Message::Keyboard(key, modifiers) => {
                 if modifiers.contains(Modifiers::CTRL)
                     && (key == Key::Character("f".into())
-                        || key == Key::Character("F".into()))
+                        || key == Key::Character("F".into())
+                        || key == Key::Character("а".into())
+                        || key == Key::Character("А".into()))
                 {
                     return Task::done(wrap![ExplorerMessage::ToggleFilter(
                         !screen.filter_opened
@@ -250,7 +275,7 @@ impl Screen for ExplorerScreen {
                             .parsed_dmis
                             .get(&path)
                             .unwrap_or(&Vec::new())
-                            .join(", ");
+                            .join(&screen.settings.delimeter);
                         let _ = Clipboard::new().unwrap().set_text(states);
                         Task::done(popup(
                             "All states were copied",
@@ -359,19 +384,86 @@ impl Screen for ExplorerScreen {
                     }
                     ExplorerMessage::ChangeFilteredText(new_text) => {
                         screen.filtered_text = new_text;
+                        let scroll = Box::new(operation::scope(
+                            advanced::widget::Id::new(
+                                MAIN_EXPLORER_CONTAINER_ID,
+                            ),
+                            operation::scrollable::snap_to::<Message>(
+                                advanced::widget::Id::new(
+                                    MAIN_EXPLORER_SCROLLABLE_ID,
+                                ),
+                                scrollable::RelativeOffset { x: 0.0, y: 0.0 },
+                            ),
+                        ));
+                        scroll.finish();
                         Task::done(wrap![ExplorerMessage::JumpToPage(0, 0)])
                     }
                     ExplorerMessage::ToggleFilter(status) => {
                         screen.filter_opened = status;
+                        let scroll = Box::new(
+                            operation::scrollable::snap_to::<Message>(
+                                advanced::widget::Id::new(
+                                    MAIN_EXPLORER_SCROLLABLE_ID,
+                                ),
+                                scrollable::RelativeOffset { x: 0.0, y: 0.0 },
+                            ),
+                        );
+                        scroll.finish();
                         Task::none()
                     }
                     ExplorerMessage::JumpToPage(page, displayed_dmis_count) => {
-                        if page <= displayed_dmis_count / screen.page_size {
+                        if page
+                            <= displayed_dmis_count / screen.settings.page_size
+                        {
                             screen.current_page = page;
                         }
 
                         Task::none()
                     }
+                    ExplorerMessage::ToggleSettingsVisibility(visible) => {
+                        screen.settings_visible = visible;
+                        Task::none()
+                    }
+                    ExplorerMessage::SaveSettings => {
+                        app.config.explorer_settings = screen.settings.clone();
+                        app.config.save();
+                        Task::done(popup(
+                            "Saved settings to Config.toml",
+                            Some("Saved"),
+                            ToastLevel::Success,
+                        ))
+                    }
+                    ExplorerMessage::LoadSettings => {
+                        screen.settings = app.config.explorer_settings.clone();
+                        Task::done(popup(
+                            "Loaded settings from the in-memory config",
+                            Some("Loaded"),
+                            ToastLevel::Success,
+                        ))
+                    }
+                    ExplorerMessage::ResetSettings => {
+                        screen.settings = ExplorerSettings::default();
+                        Task::done(popup(
+                            "Settings were reset to default",
+                            Some("Reset"),
+                            ToastLevel::Success,
+                        ))
+                    }
+                    ExplorerMessage::ChangePageSize(page_size) => {
+                        screen.settings.page_size = page_size;
+                        Task::done(wrap![ExplorerMessage::JumpToPage(0, 0)])
+                    }
+                    ExplorerMessage::ChangeDelimeter(delimeter) => {
+                        screen.settings.delimeter = delimeter;
+                        Task::none()
+                    }
+                    ExplorerMessage::OpenInViewer(path_buf) => Task::batch([
+                        Task::done(Message::ChangeScreen(Screens::Viewer)),
+                        Task::done(wrap![ViewerMessage::ChangeDMIPath(
+                            path_buf.to_string_lossy().into()
+                        )])
+                        .chain(Task::done(wrap![ViewerMessage::LoadDMI])),
+                    ]),
                 }
             }
             _ => Task::none(),
@@ -394,6 +486,10 @@ impl Screen for ExplorerScreen {
                 .center_y(Length::Fill)
                 .into();
         }
+
+        let settings_button = button(icon::settings()).on_press(wrap![
+            ExplorerMessage::ToggleSettingsVisibility(!screen.settings_visible)
+        ]);
 
         let input_path: TextInput<Message> =
             text_input("Input DMI path", &screen.path_in_input)
@@ -431,6 +527,7 @@ impl Screen for ExplorerScreen {
             .style(button::danger);
 
         let input_controls = row![
+            settings_button,
             input_path,
             button_load,
             button_file_explorer,
@@ -438,6 +535,61 @@ impl Screen for ExplorerScreen {
         ]
         .align_y(Vertical::Center)
         .spacing(5);
+
+        let mut settings_bar: Column<Message> = Column::new();
+        if screen.settings_visible {
+            let page_size_picker = row![
+                bold_text("Page Size: "),
+                NumberInput::new(
+                    screen.settings.page_size,
+                    10..=200,
+                    move |new_page_size| {
+                        wrap![ExplorerMessage::ChangePageSize(new_page_size)]
+                    },
+                )
+                .step(10)
+            ]
+            .align_y(Vertical::Center)
+            .spacing(5);
+
+            let delimeter_picker = row![
+                bold_text("Delimeter For Copy All: "),
+                container(
+                    text_input(
+                        "Enter the delimeter...",
+                        &screen.settings.delimeter
+                    )
+                    .on_input(|input| {
+                        wrap![ExplorerMessage::ChangeDelimeter(input)]
+                    })
+                    .on_paste(|input| {
+                        wrap![ExplorerMessage::ChangeDelimeter(input)]
+                    })
+                    .width(60)
+                    .padding(5),
+                ),
+            ]
+            .align_y(Vertical::Center)
+            .spacing(5);
+
+            let save_settings = button(row![icon::save(), "  Save Settings"])
+                .on_press(wrap![ExplorerMessage::SaveSettings])
+                .style(button::success);
+            let load_settings =
+                button(row![icon::folder(), "  Reset Settings to Config"])
+                    .on_press(wrap![ExplorerMessage::LoadSettings]);
+            let reset_settings =
+                button(row![icon::trash(), "  Reset Settings to Default"])
+                    .on_press(wrap![ExplorerMessage::ResetSettings])
+                    .style(button::danger);
+
+            settings_bar = column![
+                page_size_picker,
+                delimeter_picker,
+                row![save_settings, load_settings, reset_settings].spacing(5)
+            ]
+            .spacing(10);
+        }
 
         let output_controls =
             row![button_search, clear_all].padding(5).spacing(5);
@@ -453,6 +605,7 @@ impl Screen for ExplorerScreen {
             return container(
                 column![
                     input_controls,
+                    settings_bar,
                     container(tooltip)
                         .style(container::bordered_box)
                         .padding(50)
@@ -469,6 +622,7 @@ impl Screen for ExplorerScreen {
             return container(
                 column![
                     input_controls,
+                    settings_bar,
                     container(bold_text(
                         "... or drop your icon files or folders there!"
                     ))
@@ -525,7 +679,7 @@ impl Screen for ExplorerScreen {
             if filter_selected_state || filter_selected_dmi {
                 displayed_dmis_count += 1;
 
-                if displayed_dmis_count / screen.page_size
+                if displayed_dmis_count / screen.settings.page_size
                     != screen.current_page
                 {
                     continue;
@@ -545,6 +699,11 @@ impl Screen for ExplorerScreen {
                     parsed_dmis_column.push(container(column![
                         row![selected_mark, bold_text(path.to_string_lossy())],
                         row![
+                            button(row![icon::search(), text(" View")])
+                                .on_press(wrap![ExplorerMessage::OpenInViewer(
+                                    path.clone()
+                                )])
+                                .style(button::success),
                             button(row![icon::save(), text(" Copy All")])
                                 .on_press(wrap![ExplorerMessage::CopyDMI(
                                     path.clone()
@@ -567,147 +726,157 @@ impl Screen for ExplorerScreen {
             }
         }
 
-        let upper_page_controls = if displayed_dmis_count > screen.page_size {
-            let zeroth_page_button =
-                button("<<").on_press(wrap![ExplorerMessage::JumpToPage(
-                    0,
-                    displayed_dmis_count
-                )]);
-            let previous_page_button =
-                button("<").on_press(wrap![ExplorerMessage::JumpToPage(
-                    if screen.current_page != 0 {
-                        screen.current_page - 1
-                    } else {
-                        0
-                    },
-                    displayed_dmis_count
-                )]);
-            let next_page_button =
-                button(">").on_press(wrap![ExplorerMessage::JumpToPage(
+        let upper_page_controls =
+            if displayed_dmis_count > screen.settings.page_size {
+                let zeroth_page_button =
+                    button("<<").on_press(wrap![ExplorerMessage::JumpToPage(
+                        0,
+                        displayed_dmis_count
+                    )]);
+                let previous_page_button =
+                    button("<").on_press(wrap![ExplorerMessage::JumpToPage(
+                        if screen.current_page != 0 {
+                            screen.current_page - 1
+                        } else {
+                            0
+                        },
+                        displayed_dmis_count
+                    )]);
+                let next_page_button =
+                    button(">").on_press(wrap![ExplorerMessage::JumpToPage(
+                        screen.current_page + 1,
+                        displayed_dmis_count
+                    )]);
+                let last_page_button =
+                    button(">>").on_press(wrap![ExplorerMessage::JumpToPage(
+                        displayed_dmis_count / screen.settings.page_size,
+                        displayed_dmis_count
+                    )]);
+                let page_text = text!(
+                    "Viewing {} page from {} | DMIs {} - {} of {}",
                     screen.current_page + 1,
-                    displayed_dmis_count
-                )]);
-            let last_page_button =
-                button(">>").on_press(wrap![ExplorerMessage::JumpToPage(
-                    displayed_dmis_count / screen.page_size,
-                    displayed_dmis_count
-                )]);
-            let page_text = text!(
-                "Viewing {} page from {} | DMIs {} - {} of {}",
-                screen.current_page,
-                displayed_dmis_count / screen.page_size,
-                screen.page_size * screen.current_page,
-                (screen.page_size * screen.current_page + screen.page_size)
+                    displayed_dmis_count / screen.settings.page_size + 1,
+                    screen.settings.page_size * screen.current_page + 1,
+                    (screen.settings.page_size * screen.current_page
+                        + screen.settings.page_size
+                        + 1)
                     .min(displayed_dmis_count),
-                displayed_dmis_count
-            )
-            .font(Font {
-                weight: Weight::Bold,
-                ..Default::default()
-            });
-            container(
-                row![
-                    zeroth_page_button,
-                    previous_page_button,
-                    page_text,
-                    next_page_button,
-                    last_page_button
-                ]
-                .spacing(10)
-                .padding(5)
-                .align_y(Vertical::Center),
-            )
-            .align_x(Horizontal::Center)
-        } else {
-            let dmi_count_text = text!("Viewing {} DMIs", displayed_dmis_count)
+                    displayed_dmis_count
+                )
                 .font(Font {
                     weight: Weight::Bold,
                     ..Default::default()
                 });
-            container(dmi_count_text)
-                .padding(5)
-                .align_y(Vertical::Center)
+                container(
+                    row![
+                        zeroth_page_button,
+                        previous_page_button,
+                        page_text,
+                        next_page_button,
+                        last_page_button
+                    ]
+                    .spacing(10)
+                    .padding(5)
+                    .align_y(Vertical::Center),
+                )
                 .align_x(Horizontal::Center)
-        };
+            } else {
+                let dmi_count_text =
+                    text!("Viewing {} DMIs", displayed_dmis_count).font(Font {
+                        weight: Weight::Bold,
+                        ..Default::default()
+                    });
+                container(dmi_count_text)
+                    .padding(5)
+                    .align_y(Vertical::Center)
+                    .align_x(Horizontal::Center)
+            };
 
-        let lower_page_controls = if displayed_dmis_count > screen.page_size {
-            let zeroth_page_button =
-                button("<<").on_press(wrap![ExplorerMessage::JumpToPage(
-                    0,
-                    displayed_dmis_count
-                )]);
-            let previous_page_button =
-                button("<").on_press(wrap![ExplorerMessage::JumpToPage(
-                    if screen.current_page != 0 {
-                        screen.current_page - 1
-                    } else {
-                        0
-                    },
-                    displayed_dmis_count
-                )]);
-            let next_page_button =
-                button(">").on_press(wrap![ExplorerMessage::JumpToPage(
+        let lower_page_controls =
+            if displayed_dmis_count > screen.settings.page_size {
+                let zeroth_page_button =
+                    button("<<").on_press(wrap![ExplorerMessage::JumpToPage(
+                        0,
+                        displayed_dmis_count
+                    )]);
+                let previous_page_button =
+                    button("<").on_press(wrap![ExplorerMessage::JumpToPage(
+                        if screen.current_page != 0 {
+                            screen.current_page - 1
+                        } else {
+                            0
+                        },
+                        displayed_dmis_count
+                    )]);
+                let next_page_button =
+                    button(">").on_press(wrap![ExplorerMessage::JumpToPage(
+                        screen.current_page + 1,
+                        displayed_dmis_count
+                    )]);
+                let last_page_button =
+                    button(">>").on_press(wrap![ExplorerMessage::JumpToPage(
+                        displayed_dmis_count / screen.settings.page_size,
+                        displayed_dmis_count
+                    )]);
+                let page_text = text!(
+                    "Viewing {} page from {} | DMIs {} - {} of {}",
                     screen.current_page + 1,
-                    displayed_dmis_count
-                )]);
-            let last_page_button =
-                button(">>").on_press(wrap![ExplorerMessage::JumpToPage(
-                    displayed_dmis_count / screen.page_size,
-                    displayed_dmis_count
-                )]);
-            let page_text = text!(
-                "Viewing {} page from {} | DMIs {} - {} of {}",
-                screen.current_page,
-                displayed_dmis_count / screen.page_size,
-                screen.page_size * screen.current_page,
-                (screen.page_size * screen.current_page + screen.page_size)
+                    displayed_dmis_count / screen.settings.page_size + 1,
+                    screen.settings.page_size * screen.current_page + 1,
+                    (screen.settings.page_size * screen.current_page
+                        + screen.settings.page_size
+                        + 1)
                     .min(displayed_dmis_count),
-                displayed_dmis_count
-            )
-            .font(Font {
-                weight: Weight::Bold,
-                ..Default::default()
-            });
-            container(
-                row![
-                    zeroth_page_button,
-                    previous_page_button,
-                    page_text,
-                    next_page_button,
-                    last_page_button
-                ]
-                .spacing(10)
-                .padding(5)
-                .align_y(Vertical::Center),
-            )
-            .align_x(Horizontal::Center)
-        } else {
-            let dmi_count_text = text!("Viewing {} DMIs", displayed_dmis_count)
+                    displayed_dmis_count
+                )
                 .font(Font {
                     weight: Weight::Bold,
                     ..Default::default()
                 });
-            container(dmi_count_text)
-                .padding(5)
-                .align_y(Vertical::Center)
+                container(
+                    row![
+                        zeroth_page_button,
+                        previous_page_button,
+                        page_text,
+                        next_page_button,
+                        last_page_button
+                    ]
+                    .spacing(10)
+                    .padding(5)
+                    .align_y(Vertical::Center),
+                )
                 .align_x(Horizontal::Center)
-        };
+            } else {
+                let dmi_count_text =
+                    text!("Viewing {} DMIs", displayed_dmis_count).font(Font {
+                        weight: Weight::Bold,
+                        ..Default::default()
+                    });
+                container(dmi_count_text)
+                    .padding(5)
+                    .align_y(Vertical::Center)
+                    .align_x(Horizontal::Center)
+            };
 
-        container(scrollable(
-            column![
-                input_controls,
-                output_controls,
-                screen.filter_view(),
-                Space::with_height(10),
-                upper_page_controls,
-                parsed_dmis_column,
-                lower_page_controls,
-            ]
-            .spacing(10),
-        ))
+        container(
+            scrollable(
+                column![
+                    input_controls,
+                    output_controls,
+                    screen.filter_view(),
+                    settings_bar,
+                    upper_page_controls,
+                    parsed_dmis_column,
+                    lower_page_controls,
+                ]
+                .spacing(10),
+            )
+            .id(widget::scrollable::Id::new(MAIN_EXPLORER_SCROLLABLE_ID)),
+        )
         .center_x(Length::Fill)
         .center_y(Length::Fill)
         .padding(20)
+        .id(widget::container::Id::new(MAIN_EXPLORER_CONTAINER_ID))
         .into()
     }
 }
