@@ -477,19 +477,22 @@ impl Screen for ViewerScreen {
                     }
                     let state = state.unwrap();
 
-                    let image_bytes;
+                    let mut image_bytes = Vec::new();
 
-                    if animated {
-                        if original && cfg!(target_os = "windows") {
-                            let anim = state.get_animated(&direction);
-                            if let Some(animated) = anim {
-                                let mut buf: Cursor<Vec<u8>> = Cursor::new(
-                                    Vec::with_capacity(animated.bytes.len()),
-                                );
-                                let write_result = buf.write(&animated.bytes);
+                    match (animated, original) {
+                        (true, true) => {
+                            if cfg!(target_os = "windows") {
+                                if let Some(animated) =
+                                    state.get_original_animated(&direction)
+                                {
+                                    let mut buf: Cursor<Vec<u8>> =
+                                        Cursor::new(Vec::with_capacity(
+                                            animated.bytes.len(),
+                                        ));
+                                    let write_result =
+                                        buf.write(&animated.bytes);
 
-                                if let Err(err) = write_result {
-                                    {
+                                    if let Err(err) = write_result {
                                         error!("Failed to copy image as GIF");
                                         return Task::done(popup(
                                             format!(
@@ -500,49 +503,232 @@ impl Screen for ViewerScreen {
                                             ToastLevel::Error,
                                         ));
                                     }
+                                    image_bytes = buf.into_inner();
                                 }
-                                image_bytes = buf.into_inner();
+
+                                #[cfg(target_os = "windows")]
+                                {
+                                    use clipboard_win::{
+                                        Clipboard, Setter, format::*,
+                                    };
+
+                                    let clipboard = Clipboard::new();
+
+                                    let gif_format =
+                                        clipboard_win::format::register(
+                                            "image/gif",
+                                        );
+                                    if let Err(err) = gif_format {
+                                        return Task::done(popup(
+                                            format!(
+                                                "Failed to copy animated image: {}",
+                                                err
+                                            ),
+                                            Some("Failed copy"),
+                                            ToastLevel::Error,
+                                        ));
+                                    }
+                                    let gif_format = gif_format.unwrap();
+
+                                    if let Err(err) =
+                                        clipboard.set(gif_format, &image_bytes)
+                                    {
+                                        return Task::done(popup(
+                                            format!(
+                                                "Failed to copy animated image: {}",
+                                                err
+                                            ),
+                                            Some("Failed copy"),
+                                            ToastLevel::Error,
+                                        ));
+                                    };
+
+                                    let file_format =
+                                        clipboard_win::format::register(
+                                            "FileContents",
+                                        );
+                                    if let Err(err) = file_format {
+                                        return Task::done(popup(
+                                            format!(
+                                                "Failed to copy animated image: {}",
+                                                err
+                                            ),
+                                            Some("Failed copy"),
+                                            ToastLevel::Error,
+                                        ));
+                                    }
+                                    let file_format = file_format.unwrap();
+
+                                    if let Err(err) =
+                                        clipboard.set(file_format, &image_bytes)
+                                    {
+                                        return Task::done(popup(
+                                            format!(
+                                                "Failed to copy animated image: {}",
+                                                err
+                                            ),
+                                            Some("Failed copy"),
+                                            ToastLevel::Error,
+                                        ));
+                                    };
+
+                                    return Task::done(popup(
+                                        "Copied image to the clipboard",
+                                        Some("Copied"),
+                                        ToastLevel::Success,
+                                    ));
+                                }
                             } else {
-                                return Task::done(popup(
-                                    "Failed to get animated image",
-                                    Some("Failed copy"),
-                                    ToastLevel::Error,
-                                ));
+                                if let Some(image) =
+                                    state.get_original_frame(&direction, 0)
+                                {
+                                    image_bytes = image.clone().into_bytes();
+                                } else {
+                                    return Task::done(popup(
+                                        "Failed to get original frame",
+                                        Some("Failed copy"),
+                                        ToastLevel::Error,
+                                    ));
+                                }
                             }
-                        } else {
-                            let anim = state.get_frame(&direction, 1);
-                            if let Some(animated) = anim {
-                                image_bytes = animated.as_bytes().to_vec();
+                        }
+                        (true, false) => {
+                            if cfg!(target_os = "windows") {
+                                if let Some(animated) =
+                                    state.get_animated(&direction)
+                                {
+                                    let mut buf: Cursor<Vec<u8>> =
+                                        Cursor::new(Vec::with_capacity(
+                                            animated.bytes.len(),
+                                        ));
+                                    let write_result =
+                                        buf.write(&animated.bytes);
+
+                                    if let Err(err) = write_result {
+                                        error!("Failed to copy image as GIF");
+                                        return Task::done(popup(
+                                            format!(
+                                                "Failed to copy the image as GIF - {}",
+                                                err
+                                            ),
+                                            Some("Failed copy"),
+                                            ToastLevel::Error,
+                                        ));
+                                    }
+                                    image_bytes = buf.into_inner();
+                                }
+
+                                #[cfg(target_os = "windows")]
+                                {
+                                    use clipboard_win::{
+                                        Clipboard, Setter, format::*,
+                                    };
+
+                                    let clipboard = Clipboard::new();
+
+                                    let gif_format =
+                                        clipboard_win::format::register(
+                                            "image/gif",
+                                        );
+                                    if let Err(err) = gif_format {
+                                        return Task::done(popup(
+                                            format!(
+                                                "Failed to copy animated image: {}",
+                                                err
+                                            ),
+                                            Some("Failed copy"),
+                                            ToastLevel::Error,
+                                        ));
+                                    }
+                                    let gif_format = gif_format.unwrap();
+
+                                    if let Err(err) =
+                                        clipboard.set(gif_format, &image_bytes)
+                                    {
+                                        return Task::done(popup(
+                                            format!(
+                                                "Failed to copy animated image: {}",
+                                                err
+                                            ),
+                                            Some("Failed copy"),
+                                            ToastLevel::Error,
+                                        ));
+                                    };
+
+                                    let file_format =
+                                        clipboard_win::format::register(
+                                            "FileContents",
+                                        );
+                                    if let Err(err) = file_format {
+                                        return Task::done(popup(
+                                            format!(
+                                                "Failed to copy animated image: {}",
+                                                err
+                                            ),
+                                            Some("Failed copy"),
+                                            ToastLevel::Error,
+                                        ));
+                                    }
+                                    let file_format = file_format.unwrap();
+
+                                    if let Err(err) =
+                                        clipboard.set(file_format, &image_bytes)
+                                    {
+                                        return Task::done(popup(
+                                            format!(
+                                                "Failed to copy animated image: {}",
+                                                err
+                                            ),
+                                            Some("Failed copy"),
+                                            ToastLevel::Error,
+                                        ));
+                                    };
+
+                                    return Task::done(popup(
+                                        "Copied image to the clipboard",
+                                        Some("Copied"),
+                                        ToastLevel::Success,
+                                    ));
+                                }
+                            } else {
+                                if let Some(image) =
+                                    state.get_frame(&direction, 0)
+                                {
+                                    image_bytes = image.clone().into_bytes();
+                                } else {
+                                    return Task::done(popup(
+                                        "Failed to get original frame",
+                                        Some("Failed copy"),
+                                        ToastLevel::Error,
+                                    ));
+                                }
+                            }
+                        }
+                        (false, true) => {
+                            if let Some(image) = state
+                                .get_original_frame(&direction, frame.unwrap())
+                            {
+                                image_bytes = image.clone().into_bytes();
                             } else {
                                 return Task::done(popup(
-                                    "Failed to get the first frame of animation",
+                                    "Failed to get original frame",
                                     Some("Failed copy"),
                                     ToastLevel::Error,
                                 ));
                             }
                         }
-                    } else if original {
-                        let icon = state
-                            .get_original_frame(&direction, frame.unwrap());
-                        if let Some(image) = icon {
-                            image_bytes = image.clone().into_bytes();
-                        } else {
-                            return Task::done(popup(
-                                "Failed to get original frame",
-                                Some("Failed copy"),
-                                ToastLevel::Error,
-                            ));
-                        }
-                    } else {
-                        let icon = state.get_frame(&direction, frame.unwrap());
-                        if let Some(image) = icon {
-                            image_bytes = image.clone().into_bytes();
-                        } else {
-                            return Task::done(popup(
-                                "Failed to get resized frame",
-                                Some("Failed copy"),
-                                ToastLevel::Error,
-                            ));
+                        (false, false) => {
+                            let icon =
+                                state.get_frame(&direction, frame.unwrap());
+                            if let Some(image) = icon {
+                                image_bytes = image.clone().into_bytes();
+                            } else {
+                                return Task::done(popup(
+                                    "Failed to get resized frame",
+                                    Some("Failed copy"),
+                                    ToastLevel::Error,
+                                ));
+                            }
                         }
                     }
 
@@ -557,32 +743,15 @@ impl Screen for ViewerScreen {
                     } else {
                         screen.parsed_dmi.displayed_width
                     };
-                    if animated {
-                        #[cfg(target_os = "windows")]
-                        {
-                            let copy_result = clipboard_win::raw::set(
-                                clipboard_win::formats::CF_DIB,
-                                &image_bytes,
-                            );
 
-                            if let Err(err) = copy_result {
-                                return Task::done(popup(
-                                    format!(
-                                        "Failed to copy animated image: {}",
-                                        err
-                                    ),
-                                    Some("Failed copy"),
-                                    ToastLevel::Error,
-                                ));
-                            }
-
-                            return Task::done(popup(
-                                "Copied image to the clipboard",
-                                Some("Copied"),
-                                ToastLevel::Success,
-                            ));
-                        }
+                    if image_bytes.is_empty() {
+                        return Task::done(popup(
+                            "Image bytes was empty",
+                            Some("Failed copy"),
+                            ToastLevel::Error,
+                        ));
                     }
+
                     let _ = Clipboard::new().unwrap().set_image(ImageData {
                         width: width as usize,
                         height: height as usize,
