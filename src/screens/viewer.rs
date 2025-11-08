@@ -523,8 +523,8 @@ impl Screen for ViewerScreen {
 
                                     if let Err(err) =
                                         clipboard_win::set_clipboard(
-                                            gif_format,
                                             &image_bytes,
+                                            gif_format,
                                         )
                                     {
                                         return Task::done(popup(
@@ -555,8 +555,8 @@ impl Screen for ViewerScreen {
 
                                     if let Err(err) =
                                         clipboard_win::set_clipboard(
-                                            gif_format,
                                             &image_bytes,
+                                            gif_format,
                                         )
                                     {
                                         return Task::done(popup(
@@ -632,8 +632,8 @@ impl Screen for ViewerScreen {
 
                                     if let Err(err) =
                                         clipboard_win::set_clipboard(
-                                            gif_format,
                                             &image_bytes,
+                                            gif_format,
                                         )
                                     {
                                         return Task::done(popup(
@@ -664,8 +664,8 @@ impl Screen for ViewerScreen {
 
                                     if let Err(err) =
                                         clipboard_win::set_clipboard(
-                                            gif_format,
                                             &image_bytes,
+                                            gif_format,
                                         )
                                     {
                                         return Task::done(popup(
