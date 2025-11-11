@@ -927,36 +927,33 @@ impl Screen for ViewerScreen {
                         })
                         .step(16);
 
-                    let filter_types = [
+                    let mut filter_type_picker: Column<Message> = [
                         CustomFilterType::Nearest,
                         CustomFilterType::Triangle,
                         CustomFilterType::CatmullRom,
                         CustomFilterType::Gaussian,
                         CustomFilterType::Lanczos3,
-                    ];
-
-                    let mut filter_type_picker: Column<Message> = filter_types
-                        .iter()
-                        .map(|filter| {
-                            radio(
-                                filter.to_string(),
-                                filter,
-                                screen
-                                    .display_settings
-                                    .statebox_default
-                                    .filter_type
-                                    .as_ref(),
-                                |filter| {
-                                    wrap![ViewerMessage::ChangeFilterType(
-                                        *filter
-                                    )]
-                                },
-                            )
-                            .into()
-                        })
-                        .collect();
+                    ]
+                    .iter()
+                    .map(|filter| {
+                        radio(
+                            filter.to_string(),
+                            filter,
+                            screen
+                                .display_settings
+                                .statebox_default
+                                .filter_type
+                                .as_ref(),
+                            |filter| {
+                                wrap![ViewerMessage::ChangeFilterType(*filter)]
+                            },
+                        )
+                        .into()
+                    })
+                    .collect();
                     filter_type_picker = column![
-                        bold_text("Resize Filter:"),
+                        row![icon::filter(), bold_text("Resize Filter:")]
+                            .spacing(5),
                         filter_type_picker.spacing(5)
                     ]
                     .spacing(5);
@@ -1005,7 +1002,7 @@ impl Screen for ViewerScreen {
                 resizing_display_toggler,
                 resize_toggler,
                 resize_picker,
-                row![save_settings, load_settings, reset_settings].spacing(5)
+                row![save_settings, load_settings, reset_settings].spacing(10)
             ]
             .spacing(10);
         }

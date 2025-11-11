@@ -1,6 +1,6 @@
 // Generated automatically by iced_fontello at build time.
 // Do not edit manually. Source: ../assets/fonts/fontello.toml
-// b4af160f1a3c160321bafe1a52ff42478cc49b7b12119d61a867c02bc0916a15
+// 65e43d13a306940df4bca46a6200cc5901d80d364684d98cc166d5debed4f595
 use iced::widget::{text, Text};
 use iced::Font;
 
@@ -12,6 +12,10 @@ pub fn edit<'a>() -> Text<'a> {
 
 pub fn file<'a>() -> Text<'a> {
     icon("\u{F15C}")
+}
+
+pub fn filter<'a>() -> Text<'a> {
+    icon("\u{F0B0}")
 }
 
 pub fn folder<'a>() -> Text<'a> {

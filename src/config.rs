@@ -84,7 +84,7 @@ pub struct Config {
     pub data_dir: PathBuf,
     // for viewer screen
     pub statebox_defaults: SerializableStateboxSettings,
-    // for extractor screen
+    // for explorer screen
     pub explorer_settings: ExplorerSettings,
 }
 
@@ -118,9 +118,8 @@ impl Config {
             return loaded_config;
         };
 
-        let new_config = Self::default();
-        new_config.save();
-        new_config
+        
+        Self::default()
     }
 
     pub fn save(&self) {

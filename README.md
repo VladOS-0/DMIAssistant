@@ -19,7 +19,7 @@ Simple application for finding and viewing DMI icon files from [BYOND](https://w
 
  ...where `user`/`User` part is your username. Also path to the config directory can be overriden in `.env` file with the `CONFIG_PATH` variable.
  
- > [!ATTENTION]  
+ > [!WARNING]  
  > Be **VERY** careful, when you modify the paths in the config, **especially** `log_dir` and `cache_dir`.
  > These directories will be **NUKED** by the DMIAssistant, deleting all your important files, if you set them wrongly!
 

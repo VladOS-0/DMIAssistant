@@ -1,6 +1,6 @@
 [package]
 name = "dmi_assistant"
-version = "0.0.29"
+version = "0.0.30"
 edition = "2024"
 
 [dependencies]
@@ -28,9 +28,6 @@ walkdir = "2.5.0"
 [build-dependencies]
 iced_fontello = "0.13.1"
 winresource = "0.1.19"
-
-[target.'cfg(target_os = "windows")'.dependencies]
-clipboard-win = "5.4.0"
 
 
 [profile.release]

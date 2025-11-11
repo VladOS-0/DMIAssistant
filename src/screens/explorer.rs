@@ -1,6 +1,7 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     ffi::OsStr,
+    fmt::Display,
     path::PathBuf,
     time::Instant,
 };
@@ -18,7 +19,7 @@ use iced::{
     keyboard::{Key, Modifiers},
     widget::{
         self, Column, Container, Space, TextInput, button, column, container,
-        rich_text, row, scrollable, span, text, text_input,
+        radio, rich_text, row, scrollable, span, text, text_input,
     },
 };
 use iced_aw::{NumberInput, TabLabel};
@@ -72,6 +73,7 @@ pub enum ExplorerMessage {
     ChangePageSize(usize),
     ChangeDelimeter(String),
     ChangeRecursionDepth(usize),
+    ChangeSearchFilterMode(SearchFilterMode),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -79,6 +81,7 @@ pub struct ExplorerSettings {
     pub page_size: usize,
     pub delimeter: String,
     pub recursion_depth: usize,
+    pub search_filter_mode: SearchFilterMode,
 }
 
 impl Default for ExplorerSettings {
@@ -87,6 +90,27 @@ impl Default for ExplorerSettings {
             page_size: DEFAULT_PAGE_SIZE,
             delimeter: DEFAULT_DELIMETER.to_string(),
             recursion_depth: DEFAULT_RECURSION_DEPTH,
+            search_filter_mode: SearchFilterMode::default(),
+        }
+    }
+}
+
+#[derive(
+    Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq,
+)]
+pub enum SearchFilterMode {
+    #[default]
+    DmiAndState,
+    State,
+    Dmi,
+}
+
+impl Display for SearchFilterMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SearchFilterMode::DmiAndState => write!(f, "DMI Path & State Name"),
+            SearchFilterMode::State => write!(f, "State Name"),
+            SearchFilterMode::Dmi => write!(f, "DMI Path"),
         }
     }
 }
@@ -475,7 +499,6 @@ impl Screen for ExplorerScreen {
                         screen.settings.recursion_depth = depth;
                         Task::none()
                     }
-
                     ExplorerMessage::CopyFile(dmi_path) => {
                         let clipboard = match &mut app.clipboard {
                             Some(clipboard) => clipboard,
@@ -528,6 +551,15 @@ impl Screen for ExplorerScreen {
                             Some("Copied"),
                             ToastLevel::Success,
                         ))
+                    }
+                    ExplorerMessage::ChangeSearchFilterMode(mode) => {
+                        if mode != screen.settings.search_filter_mode {
+                            screen.settings.search_filter_mode = mode;
+                            return Task::done(wrap![
+                                ExplorerMessage::JumpToPage(0, 0)
+                            ]);
+                        }
+                        Task::none()
                     }
                 }
             }
@@ -599,13 +631,13 @@ impl Screen for ExplorerScreen {
             button_folder_explorer
         ]
         .align_y(Vertical::Center)
-        .spacing(5);
+        .spacing(10);
 
         let mut settings_bar: Column<Message> = Column::new();
         if screen.settings_visible {
             let page_size_picker = row![
                 icon::file(),
-                text(" Page Size: "),
+                text("Page Size: "),
                 NumberInput::new(
                     screen.settings.page_size,
                     10..=200,
@@ -620,7 +652,7 @@ impl Screen for ExplorerScreen {
 
             let delimeter_picker = row![
                 icon::resize_width(),
-                text(" Delimeter For Copy All: "),
+                text("Delimeter For Copy All: "),
                 container(
                     text_input(
                         "Enter the delimeter...",
@@ -641,7 +673,7 @@ impl Screen for ExplorerScreen {
 
             let recusion_depth_picker = row![
                 icon::folder(),
-                text(" Recursion Depth: "),
+                text("Recursion Depth: "),
                 NumberInput::new(
                     screen.settings.recursion_depth,
                     1..=100,
@@ -652,6 +684,30 @@ impl Screen for ExplorerScreen {
                 .step(1)
             ]
             .align_y(Vertical::Center)
+            .spacing(5);
+
+            let mut filter_mode_picker: Column<Message> = [
+                SearchFilterMode::DmiAndState,
+                SearchFilterMode::State,
+                SearchFilterMode::Dmi,
+            ]
+            .iter()
+            .map(|mode| {
+                radio(
+                    mode.to_string(),
+                    mode,
+                    Some(&screen.settings.search_filter_mode),
+                    |mode| {
+                        wrap![ExplorerMessage::ChangeSearchFilterMode(*mode)]
+                    },
+                )
+                .into()
+            })
+            .collect();
+            filter_mode_picker = column![
+                row![icon::search(), bold_text(" Search by:")],
+                filter_mode_picker.spacing(5)
+            ]
             .spacing(5);
 
             let save_settings = button(row![icon::save(), " Save Settings"])
@@ -669,7 +725,8 @@ impl Screen for ExplorerScreen {
                 page_size_picker,
                 delimeter_picker,
                 recusion_depth_picker,
-                row![save_settings, load_settings, reset_settings].spacing(5)
+                filter_mode_picker,
+                row![save_settings, load_settings, reset_settings].spacing(10)
             ]
             .spacing(10);
         }
@@ -736,19 +793,30 @@ impl Screen for ExplorerScreen {
                     filter_selected_state = true;
                     filter_selected_this_state = true;
                 }
-                if filter_selected_dmi || filter_selected_this_state {
-                    let selected_mark: text::Rich<Message> =
-                        if screen.filtered_text.is_empty() {
-                            rich_text([span("")])
-                        } else if filter_selected_this_state {
-                            rich_text([span("+  ")
-                                .color(color!(0x89fc41))
-                                .size(20)])
-                        } else {
-                            rich_text([span("-  ")
-                                .color(color!(0xfc4144))
-                                .size(20)])
-                        };
+                if (filter_selected_dmi
+                    && screen.settings.search_filter_mode
+                        != SearchFilterMode::State)
+                    || (filter_selected_this_state
+                        && screen.settings.search_filter_mode
+                            != SearchFilterMode::Dmi)
+                {
+                    let selected_mark: text::Rich<Message> = if screen
+                        .settings
+                        .search_filter_mode
+                        == SearchFilterMode::Dmi
+                    {
+                        rich_text([span("? ").color(color!(0xcde002)).size(20)])
+                    } else if screen.filtered_text.is_empty() {
+                        rich_text([span("")])
+                    } else if filter_selected_this_state {
+                        rich_text([span("+  ")
+                            .color(color!(0x89fc41))
+                            .size(20)])
+                    } else {
+                        rich_text([span("-  ")
+                            .color(color!(0xfc4144))
+                            .size(20)])
+                    };
                     dmi_states_column = dmi_states_column.push(row![
                         row![selected_mark, text!("{}  ", state)],
                         button(icon::save())
@@ -759,7 +827,13 @@ impl Screen for ExplorerScreen {
                     ])
                 }
             }
-            if filter_selected_state || filter_selected_dmi {
+            if (filter_selected_dmi
+                && screen.settings.search_filter_mode
+                    != SearchFilterMode::State)
+                || (filter_selected_state
+                    && screen.settings.search_filter_mode
+                        != SearchFilterMode::Dmi)
+            {
                 displayed_dmis_count += 1;
 
                 if displayed_dmis_count / screen.settings.page_size
@@ -769,9 +843,12 @@ impl Screen for ExplorerScreen {
                 }
 
                 let selected_mark: text::Rich<Message> = if screen
-                    .filtered_text
-                    .is_empty()
+                    .settings
+                    .search_filter_mode
+                    == SearchFilterMode::State
                 {
+                    rich_text([span("? ").color(color!(0xcde002)).size(20)])
+                } else if screen.filtered_text.is_empty() {
                     rich_text([span("")])
                 } else if filter_selected_dmi {
                     rich_text([span("+  ").color(color!(0x89fc41)).size(20)])
